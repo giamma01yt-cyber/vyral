@@ -38,9 +38,9 @@ const studioChannelByHandle = h => (STUDIO.data?.channels || []).find(c => c.han
 /* ---------------- formattazione ---------------- */
 const hrs = m => m == null ? '—' : fmt(m / 60);
 const secs = s => { if (s == null) return '—'; s = Math.round(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
-const eur = v => v == null ? '—' : v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: v < 10 ? 2 : 0 });
+const eur = v => v == null ? '—' : v.toLocaleString(LOC(), { style: 'currency', currency: 'EUR', maximumFractionDigits: v < 10 ? 2 : 0 });
 const flag = cc => cc && cc.length === 2 ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 127397 + c.charCodeAt(0))) : '🌍';
-const countryName = cc => { try { return new Intl.DisplayNames(['it'], { type: 'region' }).of(cc); } catch { return cc; } };
+const countryName = cc => { try { return new Intl.DisplayNames([I18N.lang], { type: 'region' }).of(cc); } catch { return cc; } };
 const ctrP = v => v == null ? null : (v <= 1 ? v * 100 : v);
 const isoDur = s => { const m = String(s || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : null; };
 
@@ -61,7 +61,7 @@ function studioChart(daily, key) {
   return `<svg class="schart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-vals='${JSON.stringify(vals)}' data-days='${JSON.stringify(daily.map(d => d.day))}' data-key="${key}">
     <defs><linearGradient id="sca" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--p1)" stop-opacity=".45"/><stop offset="1" stop-color="var(--p1)" stop-opacity="0"/></linearGradient></defs>
     ${ticks.map(t => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(t)}" y2="${y(t)}" class="gl"/><text x="${P.l - 8}" y="${y(t) + 4}" class="yl">${f(t)}</text>`).join('')}
-    ${daily.map((dd, i) => i % step === 0 ? `<text x="${x(i)}" y="${H - 8}" class="xl">${new Date(dd.day).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</text>` : '').join('')}
+    ${daily.map((dd, i) => i % step === 0 ? `<text x="${x(i)}" y="${H - 8}" class="xl">${new Date(dd.day).toLocaleDateString(LOC(), { day: 'numeric', month: 'short' })}</text>` : '').join('')}
     <path d="${area}" fill="url(#sca)" class="sarea"/><path d="${d}" class="sline"/>
     <line class="hov-l" y1="${P.t}" y2="${H - P.b}" x1="0" x2="0"/><circle class="hov-c" r="5" cx="0" cy="0"/>
   </svg><div class="stip"></div>`;
@@ -79,7 +79,7 @@ function bindChart(root) {
     const X = P.l + (vals.length === 1 ? 0 : i / (vals.length - 1)) * (W - P.l - P.r), Y = P.t + (1 - (vals[i] - min) / (max - min || 1)) * (H - P.t - P.b);
     l.setAttribute('x1', X); l.setAttribute('x2', X); c.setAttribute('cx', X); c.setAttribute('cy', Y);
     svg.classList.add('hover');
-    tip.innerHTML = `<b>${f(vals[i])}</b><span>${new Date(days[i]).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'long' })}</span>`;
+    tip.innerHTML = `<b>${f(vals[i])}</b><span>${new Date(days[i]).toLocaleDateString(LOC(), { weekday: 'short', day: 'numeric', month: 'long' })}</span>`;
     tip.style.left = (X / W * r.width) + 'px'; tip.style.top = (Y / H * r.height) + 'px'; tip.classList.add('on');
   };
   svg.onpointerleave = () => { svg.classList.remove('hover'); tip.classList.remove('on'); };
@@ -150,7 +150,7 @@ function viewStudio(v) {
   <div class="pbanner glass rise" style="--i:0;${pVars('youtube')}"><div class="glowbg"></div>
     <div class="row1">
       ${ch.avatar ? `<img class="bi" src="${esc(ch.avatar)}" referrerpolicy="no-referrer" alt="" style="object-fit:cover;padding:0">` : `<div class="bi">${pIcon('youtube', 30)}</div>`}
-      <div><h2>${esc(ch.name)}</h2><div class="sub">${esc(ch.handle)} · ${fmt(ch.subscribers)} iscritti · ${fmt(ch.video_count)} video · dati fino al ${new Date(ch.end_date).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</div></div>
+      <div><h2>${esc(ch.name)}</h2><div class="sub">${esc(ch.handle)} · ${fmt(ch.subscribers)} iscritti · ${fmt(ch.video_count)} video · dati fino al ${new Date(ch.end_date).toLocaleDateString(LOC(), { day: 'numeric', month: 'long' })}</div></div>
       <div class="seg tabs" id="sper">${[['7', '7 giorni'], ['28', '28 giorni'], ['90', '90 giorni']].map(([k, l]) => `<button data-p="${k}" class="${STUDIO.period === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     </div>
     ${chans.length > 1 ? `<div class="seg" id="sch" style="margin-top:18px;position:relative;flex-wrap:wrap">${chans.map(c => `<button data-c="${esc(c.id)}" class="${c.id === ch.id ? 'on' : ''}">${esc(c.name)}</button>`).join('')}</div>` : ''}

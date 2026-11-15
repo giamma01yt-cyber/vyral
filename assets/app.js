@@ -10,11 +10,12 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const nfC = new Intl.NumberFormat('it-IT', { notation: 'compact', maximumFractionDigits: 1 });
-const nfF = new Intl.NumberFormat('it-IT');
+let nfC, nfF;
+function mkNF() { nfC = new Intl.NumberFormat(LOC(), { notation: 'compact', maximumFractionDigits: 1 }); nfF = new Intl.NumberFormat(LOC()); }
+mkNF();
 const fmt = n => n == null || !isFinite(n) ? '—' : nfC.format(n);
 const full = n => n == null ? 'n/d' : nfF.format(n);
-const pct = n => n == null || !isFinite(n) ? '—' : (n * 100).toLocaleString('it-IT', { maximumFractionDigits: n < .1 ? 2 : 1 }) + '%';
+const pct = n => n == null || !isFinite(n) ? '—' : (n * 100).toLocaleString(LOC(), { maximumFractionDigits: n < .1 ? 2 : 1 }) + '%';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 function ago(ts) {
   if (!ts) return '—';
@@ -23,7 +24,7 @@ function ago(ts) {
   if (s < 3600) return Math.round(s / 60) + ' min fa';
   if (s < 86400) return Math.round(s / 3600) + ' h fa';
   if (s < 86400 * 30) return Math.round(s / 86400) + ' g fa';
-  return new Date(ts * 1000).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(ts * 1000).toLocaleDateString(LOC(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function dur(s) {
   if (!s) return '';
@@ -60,6 +61,7 @@ const P = {
   trend: '<path d="m23 6-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/>',
   fire: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.2 1.5 1.2 2.7 2.5 2.7z"/>',
   play: '<path d="M7 4v16l13-8z" fill="currentColor"/>',
+  pin: '<path d="M12 17v5M9 10.8V5h6v5.8l2.6 2.7a1 1 0 0 1-.7 1.7H7.1a1 1 0 0 1-.7-1.7z"/>',
   arrow: '<path d="M7 17 17 7M8 7h9v9"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -172,7 +174,7 @@ const DEFAULT_SETTINGS = {
   name: '', theme: 'aurora', bg: 'aurora', oled: false, glow: true, animations: true, density: 'comfy', radius: 20,
   videos_per_channel: 3, hot_threshold: 1.3, yt_tab: 'both',
   metrics: Object.fromEntries(Object.keys(METRICS).map(k => [k, true])),
-  platforms: ['youtube', 'tiktok'], auto_reload: 5,
+  platforms: ['youtube', 'tiktok'], auto_reload: 5, pinned: [], lang: '',
 };
 const withDefaults = s => ({ ...DEFAULT_SETTINGS, ...(s || {}), metrics: { ...DEFAULT_SETTINGS.metrics, ...(s?.metrics || {}) } });
 
@@ -386,7 +388,9 @@ function allVideos(platform) {
   }
   return out;
 }
-const chOf = p => S.channels.filter(c => c.platform === p);
+const isPinned = id => (S.settings.pinned || []).includes(id);
+const pinRank = id => { const i = (S.settings.pinned || []).indexOf(id); return i < 0 ? 1e9 : i; };
+const chOf = p => S.channels.filter(c => c.platform === p).sort((a, b) => pinRank(a.id) - pinRank(b.id));
 
 /* ============================================================
    UI helpers: toast, modale, animazioni
@@ -459,6 +463,10 @@ function avatar(ch, d) {
 const imgTag = (src, cls = '') => src ? `<img ${cls ? `class="${cls}"` : ''} src="${esc(src)}" loading="lazy" referrerpolicy="no-referrer" alt="" onerror="this.style.opacity=0">` : `<div class="noimg"></div>`;
 
 /* ---------------- tema ---------------- */
+function applyLang(l) {
+  if (!l || l === I18N.lang) return false;
+  setLang(l); mkNF(); return true;
+}
 function applySettings() {
   const s = S.settings, t = THEMES[s.theme] || THEMES.aurora, b = document.body, r = document.documentElement.style;
   r.setProperty('--a1', t.a1); r.setProperty('--a2', t.a2); r.setProperty('--r', s.radius + 'px');
@@ -643,6 +651,7 @@ function viewHome(v) {
     ['clock', 'Views all\'ora', cnt(vphs.length ? vphs.reduce((a, b) => a + b) / vphs.length : null), 'media dalla pubblicazione', '#3ddc97', '#14b8a6']]
       .map(([i, l, val, h, k1, k2], n) => `<div class="kpi glass glow-card rise" style="--i:${n + 1};--k1:${k1};--k2:${k2};--p1:${k1}"><div class="deco"></div><div class="ki">${ic(i, 19)}</div><div class="l">${l}</div><div class="v">${val}</div><div class="h">${h}</div></div>`).join('')}
   </div>
+  ${pinnedSection()}
   <div class="sec-title rise" style="--i:5"><h3>I tuoi social</h3></div>
   <div class="ptiles">
     ${s.platforms.map((p, n) => {
@@ -669,6 +678,21 @@ function viewHome(v) {
         <div class="bar"><i data-w="${(e.agg.avgViews / maxAvg * 100).toFixed(1)}%"></i></div></div>`).join('') : '<p class="mut">Ancora nessun dato.</p>'}</div>
     </div>
   </div>`;
+}
+
+function pinnedSection() {
+  const pins = (S.settings.pinned || []).map(id => S.channels.find(c => c.id === id)).filter(Boolean);
+  if (!pins.length) return `<div class="pin-hint glass rise" style="--i:5">${ic('pin', 16)}<span>Fissa i tuoi canali migliori con la puntina: compaiono qui e sempre per primi.</span></div>`;
+  return `<div class="sec-title rise" style="--i:5"><h3><span style="color:var(--a1)">${ic('pin', 19)}</span>Canali fissati</h3></div>
+  <div class="pgrid">${pins.map((ch, i) => {
+    const d = entryOf(ch.id), pl = PLATFORMS[ch.platform], last = d?.videos?.[0], a = d?.agg || {};
+    return `<div class="pcard glass glow-card rise" style="--i:${i + 6};${pVars(ch.platform)};--p1:${pl.c1}" data-go="#/p/${ch.platform}">
+      <div class="pc-top">${avatar(ch, d)}<div style="min-width:0;flex:1"><div class="ch-name">${esc(d?.channel?.name || ch.handle)}</div>
+        <div class="ch-sub"><span class="plat-tag">${pIcon(ch.platform, 11)}${pl.name}</span>${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>` : ''}</div></div></div>
+      <div class="pc-stats"><div><b>${cnt(a.avgViews)}</b><small>Media views</small></div><div><b>${cnt(a.avgER, 'p')}</b><small>Engagement</small></div><div><b>${cnt(a.avgVph)}</b><small>Views/ora</small></div></div>
+      ${last ? `<div class="pc-last">${imgTag(last.thumbnail)}<div style="min-width:0"><div class="ht">${esc(last.title)}</div><div class="hm">${ago(last.timestamp)} · ${fmt(last.views)} views${last.hot ? ' · 🔥' : ''}</div></div></div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 /* ---------------- PAGINA SOCIAL ---------------- */
@@ -723,12 +747,15 @@ function channelCard(ch, i) {
       <div class="vlist">${d.videos.map((x, k) => videoRow(x, k, m)).join('') || '<p class="mut" style="padding:14px">Nessun video.</p>'}</div>
       <div class="card-foot"><span>Aggiornato ${ago(d.fetched_at)}</span><span>${d.videos.length} video</span></div>`;
   }
-  return `<article class="ccard glass glow-card rise" style="--i:${i + 1};${pVars(ch.platform)};--p1:${pl.c1}">
+  const pinned = isPinned(ch.id);
+  return `<article class="ccard glass glow-card rise ${pinned ? 'pinned' : ''}" style="--i:${i + 1};${pVars(ch.platform)};--p1:${pl.c1}">
+    ${pinned ? `<span class="pin-flag">${ic('pin', 12, 2.4)}Fissato</span>` : ''}
     <div class="stripe"></div>
     <div class="ch-head">${avatar(ch, d)}
       <div class="ch-info"><div class="ch-name">${esc(d?.channel?.name || ch.handle)}</div>
         <div class="ch-sub">${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>·` : ''}<span>${esc(ch.handle)}</span>${tab ? `<span>· ${tab}</span>` : ''}</div></div>
       <div class="ch-actions">
+        <button class="ibtn pin-btn ${pinned ? 'on' : ''}" data-act="pin" data-id="${esc(ch.id)}" title="${pinned ? 'Togli dai fissati' : 'Fissa in alto'}">${ic('pin', 17)}</button>
         <a class="ibtn" href="${esc(d?.channel?.url || ch.url)}" target="_blank" rel="noopener" title="Apri canale">${ic('ext', 17)}</a>
         <button class="ibtn danger" data-act="del-ch" data-id="${esc(ch.id)}" title="Rimuovi">${ic('del', 17)}</button>
       </div></div>${body}</article>`;
@@ -739,7 +766,7 @@ function videoRow(x, k, m) {
     <a class="thumb ${x.is_short ? 'v' : ''}" href="${esc(x.url)}" target="_blank" rel="noopener">${imgTag(x.thumbnail)}<span class="play">${ic('play', 26)}</span><span class="rank">#${k + 1}</span>${x.duration ? `<span class="d">${dur(x.duration)}</span>` : ''}</a>
     <div class="vbody">
       <div class="vtop"><a class="vt" href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title)}</a>${m.spark ? spark(x.history) : ''}</div>
-      <div class="vm"><span title="${x.timestamp ? new Date(x.timestamp * 1000).toLocaleString('it-IT') : ''}">${ago(x.timestamp)}</span>
+      <div class="vm"><span title="${x.timestamp ? new Date(x.timestamp * 1000).toLocaleString(LOC()) : ''}">${ago(x.timestamp)}</span>
         ${x.hot ? `<span class="badge hot">🔥 ${x.perf.toFixed(1)}× media</span>` : x.perf != null && x.perf <= .7 ? `<span class="badge low">${x.perf.toFixed(1)}× media</span>` : ''}
         ${m.growth && x.delta24 > 0 ? `<span class="badge up" title="Views guadagnate nel periodo indicato">+${fmt(x.delta24)} ${x.deltaLbl}</span>` : m.growth && x.delta > 0 ? `<span class="badge up" title="Dall'aggiornamento precedente">+${fmt(x.delta)}</span>` : ''}</div>
       <div class="chips">
@@ -772,7 +799,7 @@ const COLS = [
 ];
 function viewAll(v) { v.innerHTML = '<div id="pcontent"></div>'; renderTable($('#pcontent', v), null); }
 function renderTable(c, platform) {
-  const base = allVideos(platform || S.filterP).filter(x => S.filterCh === 'all' || x.ch.id === S.filterCh);
+  const base = allVideos(platform || S.filterP).filter(x => S.filterCh === 'all' || (S.filterCh === 'pinned' ? isPinned(x.ch.id) : x.ch.id === S.filterCh));
   let vids = base;
   if (S.q) { const q = S.q.toLowerCase(); vids = vids.filter(x => (x.title + ' ' + x.chName).toLowerCase().includes(q)); }
   const { k, d } = S.sort;
@@ -797,6 +824,7 @@ function renderTable(c, platform) {
   <div class="toolbar ${firstRender ? 'rise' : ''}" style="--i:7">
     <label class="input">${ic('search', 17)}<input id="tq" placeholder="Cerca per titolo o canale…" value="${esc(S.q)}"></label>
     ${platform ? '' : `<div class="seg" id="fp"><button data-f="all" class="${S.filterP === 'all' ? 'on' : ''}">Tutti</button>${S.settings.platforms.map(p => `<button data-f="${p}" class="${S.filterP === p ? 'on' : ''}"><span style="color:${PLATFORMS[p].c1}">${pIcon(p, 14)}</span>${PLATFORMS[p].name}</button>`).join('')}</div>`}
+    ${(S.settings.pinned || []).length ? `<button class="btn sm ${S.filterCh === 'pinned' ? 'primary' : ''}" id="fpin" style="height:44px">${ic('pin', 15)}Solo fissati</button>` : ''}
     <select class="select" id="fc"><option value="all">Tutti i canali</option>${chList.map(ch => `<option value="${esc(ch.id)}" ${S.filterCh === ch.id ? 'selected' : ''}>${esc(entryOf(ch.id)?.channel?.name || ch.handle)}</option>`).join('')}</select>
   </div>
   <div class="glass twrap ${firstRender ? 'rise' : ''}" style="--i:8"><table>
@@ -816,6 +844,7 @@ function renderTable(c, platform) {
   const q = $('#tq', c);
   q.oninput = () => { S.q = q.value; const pos = q.selectionStart; re(); const n = $('#tq', c); n.focus(); n.setSelectionRange(pos, pos); };
   $('#fc', c).onchange = e => { S.filterCh = e.target.value; re(); };
+  const fp = $('#fpin', c); if (fp) fp.onclick = () => { S.filterCh = S.filterCh === 'pinned' ? 'all' : 'pinned'; re(); };
   $$('#fp button', c).forEach(b => b.onclick = () => { S.filterP = b.dataset.f; S.filterCh = 'all'; re(); });
   $$('th[data-k]', c).forEach(th => th.onclick = () => { const kk = th.dataset.k; if (S.sort.k === kk) S.sort.d *= -1; else S.sort = { k: kk, d: kk === 'title' ? 1 : -1 }; re(); });
 }
@@ -832,7 +861,8 @@ function viewSettings(v, keep) {
   v.innerHTML = `<div class="set-wrap">
   <nav class="set-nav glass ${keep ? '' : 'rise'}">${[['profilo', 'user', 'Profilo'], ['aspetto', 'palette', 'Aspetto'], ['statistiche', 'chart', 'Statistiche'], ['social', 'share2', 'Social'], ['aggiornamento', 'sync', 'Aggiornamento'], ['account', 'key', 'Account'], ['dati', 'db', 'Dati']].map(([id, i, l], n) => `<a href="#s-${id}" data-scroll="s-${id}" class="${n === 0 ? 'on' : ''}">${ic(i, 17)}${l}</a>`).join('')}</nav>
   <div>
-  ${sec('profilo', 'user', 'Profilo', row('Il tuo nome', 'Compare nel saluto della Home.', `<label class="input"><input data-text="name" value="${esc(s.name)}" placeholder="Come ti chiami?" maxlength="30"></label>`), 0)}
+  ${sec('profilo', 'user', 'Profilo', row('Il tuo nome', 'Compare nel saluto della Home.', `<label class="input"><input data-text="name" value="${esc(s.name)}" placeholder="Come ti chiami?" maxlength="30"></label>`)
+    + row('Lingua', "Lingua dell'interfaccia su questo dispositivo.", `<div class="seg" id="langSeg">${Object.entries(LANGS).map(([k, l]) => `<button data-l="${k}" class="${I18N.lang === k ? 'on' : ''}">${l}</button>`).join('')}</div>`), 0)}
   ${sec('aspetto', 'palette', 'Aspetto',
     row('Tema', 'Colori di pulsanti, grafici ed effetti.', `<div class="swatches">${Object.entries(THEMES).map(([k, t]) => `<button class="sw ${s.theme === k ? 'on' : ''}" data-theme="${k}" style="--s1:${t.a1};--s2:${t.a2}"><div class="c"></div>${t.n}</button>`).join('')}</div>`) +
     row('Sfondo animato', 'L\'effetto dietro all\'interfaccia.', segm('bg', [['aurora', 'Aurora'], ['grid', 'Griglia'], ['stars', 'Stelle'], ['off', 'Spento']])) +
@@ -886,6 +916,7 @@ function viewSettings(v, keep) {
   const nameIn = $('[data-text="name"]', v);
   nameIn.oninput = () => { S.settings.name = nameIn.value.trim(); saveSettingsSoon(); const me = $('.me b'); if (me) me.textContent = S.settings.name || S.auth?.owner || 'Demo'; };
   $('#importFile', v).onchange = importBackup;
+  $$('#langSeg button', v).forEach(b => b.onclick = () => { S.settings.lang = b.dataset.l; if (applyLang(b.dataset.l)) { saveSettingsSoon(); shellKey = ''; render(); } });
   // evidenzia sezione visibile
   const links = $$('.set-nav a', v);
   links.forEach(a => a.onclick = e => { e.preventDefault(); document.getElementById(a.dataset.scroll).scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -922,9 +953,18 @@ async function deleteChannel(id) {
   if (!ch || !await confirmBox('Rimuovere il canale?', `${entryOf(id)?.channel?.name || ch.handle} sparirà da Vyral su tutti i tuoi dispositivi.`, 'Rimuovi')) return;
   const prev = S.channels;
   S.channels = S.channels.filter(c => c.id !== id);
+  if (isPinned(id)) { S.settings.pinned = S.settings.pinned.filter(x => x !== id); saveSettingsSoon(); }
   render();
   try { await S.backend.saveChannels(S.channels); toast('Canale rimosso'); }
   catch (e) { S.channels = prev; render(); toast(e.message, true); }
+}
+function togglePin(id) {
+  const p = S.settings.pinned || [];
+  const on = !p.includes(id);
+  S.settings.pinned = on ? [...p, id] : p.filter(x => x !== id);
+  saveSettingsSoon();
+  toast(on ? 'Canale fissato in alto' : 'Canale tolto dai fissati');
+  rerenderView();
 }
 function openAddSocial() {
   const close = modal(`<h3>Aggiungi un social</h3><p>Scegli quale piattaforma mostrare nella barra laterale.</p>
@@ -1003,6 +1043,7 @@ document.addEventListener('click', e => {
   if (a === 'add-social') openAddSocial();
   else if (a === 'rm-social') removeSocial(t.dataset.p);
   else if (a === 'del-ch') deleteChannel(t.dataset.id);
+  else if (a === 'pin') togglePin(t.dataset.id);
   else if (a === 'refresh') refresh();
   else if (a === 'logout') logout();
   else if (a === 'export') exportBackup();
@@ -1021,6 +1062,7 @@ function renderLogin(err, prefill) {
   if (m) { guess.owner = m[1]; const seg = location.pathname.split('/').filter(Boolean)[0]; if (seg && !seg.includes('.')) guess.repo = seg; }
   const saved = prefill || LS.get('lastLogin', {});
   $('#app').innerHTML = `<div class="login"><form class="lcard glass" id="login" autocomplete="off">
+    <div class="seg lang-mini" id="loginLang">${Object.keys(LANGS).map(k => `<button type="button" data-l="${k}" class="${I18N.lang === k ? 'on' : ''}">${k.toUpperCase()}</button>`).join('')}</div>
     <div class="lhero"><span class="orb"></span><span class="orb o2"></span><div class="logo">${LOGO_SVG(40)}</div></div>
     <h1>Benvenuto su Vyral</h1>
     <p>Il tuo account è il tuo repository GitHub:<br>stessi canali e impostazioni su PC e telefono.</p>
@@ -1039,6 +1081,8 @@ function renderLogin(err, prefill) {
     <button type="button" class="btn demo" id="viewBtn" style="margin-bottom:8px">${ic('eye', 15)}Entra solo per guardare (senza token)</button>
     <button type="button" class="btn demo ghost" id="demoBtn">${ic('play', 14)}Prova la demo</button>
   </form></div>`;
+  initSegs($('#login'));
+  $$('#loginLang button').forEach(b => b.onclick = () => { setLang(b.dataset.l); mkNF(); renderLogin(err, { owner: $('#lo').value, repo: $('#lr').value, token: $('#lt').value }); });
   $('#showT').onclick = () => { const t = $('#lt'); t.type = t.type === 'password' ? 'text' : 'password'; };
   $('#demoBtn').onclick = () => { LS.set('mode', 'demo'); boot(); };
   $('#viewBtn').onclick = async () => {
@@ -1079,7 +1123,7 @@ async function boot() {
     S.channels = d.channels; S.settings = withDefaults(S.backend.kind === 'view' ? { ...d.settings, ...LS.get('viewSettings', {}) } : d.settings); S.stats = d.stats || { channels: {} };
     if (!S.stats.channels) S.stats.channels = {};
     await studioLoad(d.studio);
-    reEnrich(); applySettings();
+    reEnrich(); applyLang(S.settings.lang); applySettings();
     shellKey = '';
     render();
     startAutoReload();
