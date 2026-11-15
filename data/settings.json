@@ -26,5 +26,9 @@
     "youtube",
     "tiktok"
   ],
-  "auto_reload": 5
+  "auto_reload": 5,
+  "pinned": [
+    "youtube:@bryzee6"
+  ],
+  "lang": ""
 }
