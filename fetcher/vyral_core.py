@@ -15,6 +15,16 @@ from datetime import datetime, timezone
 
 HISTORY_MAX = 72  # punti di storico views per video
 
+import threading as _th
+_DBG = _th.local()
+
+
+def dbg(msg):
+    """Registro dei tentativi (salvato in stats.json per capire cosa blocca TikTok)."""
+    lst = getattr(_DBG, "log", None)
+    if lst is not None and len(lst) < 40:
+        lst.append(str(msg)[:220])
+
 DEFAULT_SETTINGS = {"videos_per_channel": 3}
 
 # URL della lista video per ogni piattaforma
@@ -124,14 +134,17 @@ def _full(urls, platform, n, pool):
         url, short = item
         try:
             return video_info(url), short
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            dbg(f"yt-dlp video {url.rsplit('/', 1)[-1]}: ERRORE {clean_error(e)}")
             return None, short
     results = list(pool.map(one, urls))
     res = [(i, s) for i, s in results if i]
     vids = [normalize_video(i, platform, s) for i, s in res]
     if platform == "tiktok":
         failed = [u for (u, _), (i, _) in zip(urls, results) if not i]
+        dbg(f"video letti con yt-dlp: {len(res)}/{len(urls)}")
         for it in pool.map(tiktok_item, failed):
+            dbg("pagina video: " + ("ok" if it and it.get("views") is not None else "niente"))
             if it and it.get("views") is not None:
                 it.pop("_author", None)
                 vids.append(it)
@@ -257,8 +270,10 @@ def tikwm_posts(handle, n):
             req = urllib.request.Request("https://www.tikwm.com/api/user/posts?" + urllib.parse.urlencode(
                 {"unique_id": h, "count": max(n + 3, 10), "cursor": 0}), headers={"User-Agent": UA})
             j = json.loads(urllib.request.urlopen(req, timeout=25).read())
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            dbg(f"TikWM: ERRORE {e}")
             return []
+    dbg(f"TikWM: code={(j or {}).get('code')} msg={(j or {}).get('msg')} video={len(((j or {}).get('data') or {}).get('videos') or [])}")
     vids = []
     for v in ((j or {}).get("data") or {}).get("videos") or []:
         vid = str(v.get("video_id") or v.get("aweme_id") or "")
@@ -313,13 +328,16 @@ def fetch_generic(ch, n, pool):
         try:
             info = list_entries(list_url, n + extra)
             urls = [(u, platform == "tiktok") for u in (_entry_url(e, base) for e in info.get("entries") or []) if u]
+            dbg(f"yt-dlp lista tentativo {attempt + 1}: {len(urls)} video")
         except Exception as e:  # noqa: BLE001
             last_err = e
+            dbg(f"yt-dlp lista tentativo {attempt + 1}: ERRORE {clean_error(e)}")
         if urls:
             break
         time.sleep(4 * (attempt + 1))
     if not urls and platform == "tiktok":
         urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"])]
+        dbg(f"widget profilo: {len(urls)} video")
     if not urls and platform == "tiktok":
         tw = tikwm_posts(ch["handle"], n)
         if tw:
@@ -385,18 +403,24 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
 
     def work(ch):
         t0 = time.time()
+        _DBG.log = [] if ch["platform"] == "tiktok" else None
         try:
             channel, videos = fetch_channel(ch, n, inner)
             _merge_history(videos, prev.get(ch["id"]), now)
             log(f"  ok   {ch['id']}  ({len(videos)} video, {time.time() - t0:.1f}s)")
-            return ch["id"], {"channel": channel, "videos": videos, "fetched_at": now}
+            entry = {"channel": channel, "videos": videos, "fetched_at": now}
+            if _DBG.log:
+                entry["debug"] = _DBG.log
+            return ch["id"], entry
         except Exception as e:
             msg = clean_error(e)
             log(f"  err  {ch['id']}  {msg}")
             old = prev.get(ch["id"])
             if old and old.get("videos"):
-                return ch["id"], {**old, "error": msg, "error_at": now}
+                return ch["id"], {**old, "error": msg, "error_at": now, "debug": _DBG.log or None}
             entry = {"error": msg, "error_at": now, "fetched_at": None}
+            if _DBG.log:
+                entry["debug"] = _DBG.log
             if ch["platform"] == "tiktok":
                 prof = tiktok_profile(ch["handle"])
                 if prof:
@@ -407,7 +431,13 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
         for cid, entry in outer.map(work, channels):
             out[cid] = entry
     inner.shutdown()
-    return {"updated_at": now, "source": source, "channels": out}
+    import yt_dlp as _y
+    try:
+        import curl_cffi  # noqa: F401
+        imp = True
+    except ImportError:
+        imp = False
+    return {"updated_at": now, "source": source, "channels": out, "yt_dlp": _y.version.__version__, "impersonate": imp}
 
 
 # ----------------------------------------------------------------- CLI
