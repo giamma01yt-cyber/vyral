@@ -473,6 +473,9 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
 
     def work(ch):
         t0 = time.time()
+        if source == "pc" and ch["platform"] == "tiktok" and not TIKTOK_COOKIES and prev.get(ch["id"]):
+            log(f"  skip {ch['id']}  (TikTok non collegato su questo PC: tengo i dati di GitHub)")
+            return ch["id"], prev[ch["id"]]
         _DBG.log = [] if ch["platform"] == "tiktok" else None
         _DBG.ids = None
         _DBG.login = False
@@ -496,7 +499,8 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
             old = prev.get(ch["id"])
             if isinstance(e, LoginNeeded) and old and old.get("videos"):
                 # i dati letti dal PC con l'accesso TikTok restano validi: niente errore
-                return ch["id"], {**old, "needs_login": True,
+                keep = {k: v for k, v in old.items() if k not in ("error", "error_at", "debug")}
+                return ch["id"], {**keep, "needs_login": True,
                                   "known_ids": (_DBG.ids or old.get("known_ids") or [v["id"] for v in old["videos"]])[:15]}
             if old and old.get("videos"):
                 return ch["id"], {**old, "error": msg, "error_at": now, "debug": _DBG.log or None,
