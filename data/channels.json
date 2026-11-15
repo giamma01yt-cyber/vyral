@@ -7,6 +7,14 @@
       "url": "https://www.youtube.com/@grostymaps",
       "yt_tab": "both",
       "added_at": 1794774146
+    },
+    {
+      "id": "youtube:@garmink",
+      "platform": "youtube",
+      "handle": "@garmink",
+      "url": "https://www.youtube.com/@garmink",
+      "yt_tab": "both",
+      "added_at": 1794774156
     }
   ]
 }
