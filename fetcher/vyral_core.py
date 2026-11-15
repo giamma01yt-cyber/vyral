@@ -126,10 +126,21 @@ def _full(urls, platform, n, pool):
             return video_info(url), short
         except Exception:
             return None, short
-    res = [(i, s) for i, s in pool.map(one, urls) if i]
+    results = list(pool.map(one, urls))
+    res = [(i, s) for i, s in results if i]
     vids = [normalize_video(i, platform, s) for i, s in res]
-    vids.sort(key=lambda v: v["timestamp"] or 0, reverse=True)
-    return vids[:n], [i for i, _ in res]
+    if platform == "tiktok":
+        failed = [u for (u, _), (i, _) in zip(urls, results) if not i]
+        for it in pool.map(tiktok_item, failed):
+            if it and it.get("views") is not None:
+                it.pop("_author", None)
+                vids.append(it)
+    seen, uniq = set(), []
+    for v in vids:
+        if v["id"] not in seen:
+            seen.add(v["id"]); uniq.append(v)
+    uniq.sort(key=lambda v: v["timestamp"] or 0, reverse=True)
+    return uniq[:n], [i for i, _ in res]
 
 
 def fetch_youtube(ch, n, pool):
@@ -201,6 +212,33 @@ def tiktok_profile(handle):
     return {k: v for k, v in out.items() if v not in (None, "")}
 
 
+def tiktok_item(url):
+    """Piano B per un singolo post TikTok (anche caroselli di foto): legge la pagina del video."""
+    try:
+        html = _get_html(url)
+    except Exception:  # noqa: BLE001
+        return None
+    m = re.search(r'<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        return None
+    try:
+        it = json.loads(m.group(1))["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"]
+    except Exception:  # noqa: BLE001
+        return None
+    st = it.get("statsV2") or it.get("stats") or {}
+    num = lambda k: int(st[k]) if st.get(k) not in (None, "") else None  # noqa: E731
+    vid = it.get("video") or {}
+    cover = vid.get("cover") or vid.get("originCover") or ((it.get("imagePost") or {}).get("cover") or {}).get("imageURL", {}).get("urlList", [None])[0]
+    author = it.get("author") or {}
+    return {
+        "id": str(it.get("id")), "title": (it.get("desc") or "").strip()[:200] or "(senza titolo)",
+        "url": url, "thumbnail": cover, "timestamp": int(it["createTime"]) if it.get("createTime") else None,
+        "duration": vid.get("duration") or None, "views": num("playCount"), "likes": num("diggCount"),
+        "comments": num("commentCount"), "shares": num("shareCount"), "saves": num("collectCount"), "is_short": True,
+        "_author": {"name": author.get("nickname"), "avatar": author.get("avatarLarger") or author.get("avatarMedium")},
+    }
+
+
 def _tiktok_embed_urls(handle):
     """Piano B per TikTok: il widget pubblico del profilo elenca gli ultimi video."""
     h = handle.lstrip("@")
@@ -210,13 +248,13 @@ def _tiktok_embed_urls(handle):
             html = _get_html(url)
         except Exception:  # noqa: BLE001
             continue
-        found = re.findall(r'/video/(\d{15,21})', html) + re.findall(r'"(?:id|videoId|itemId)"\s*:\s*"(\d{17,21})"', html)
+        found = re.findall(r'/(?:video|photo)/(\d{18,20})', html) + re.findall(r'"(?:videoId|itemId|aweme_id|awemeId)"\s*:\s*"(\d{18,20})"', html)
         for i in found:
             if i not in ids:
                 ids.append(i)
         if ids:
             break
-    return [f"https://www.tiktok.com/@{h}/video/{i}" for i in ids[:12]]
+    return [f"https://www.tiktok.com/@{h}/video/{i}" for i in ids[:15]]
 
 
 def fetch_generic(ch, n, pool):
@@ -250,6 +288,14 @@ def fetch_generic(ch, n, pool):
                                "Riprova più tardi o premi Aggiorna dal programma per PC.")
         raise RuntimeError("Nessun video trovato (profilo privato o richiesta bloccata).")
     vids, infos = _full(urls, platform, n, pool)
+    if not vids and platform == "tiktok":
+        # ultima possibilità: gli ID dal widget del profilo
+        extra_urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"]) if u not in [x for x, _ in urls]]
+        if extra_urls:
+            vids, infos = _full(extra_urls, platform, n, pool)
+    if not vids:
+        raise RuntimeError("Ho trovato i video ma TikTok non ha permesso di leggerli. Riprova più tardi o premi Aggiorna dal programma per PC."
+                           if platform == "tiktok" else "Nessun video leggibile su questo canale.")
     first = infos[0] if infos else {}
     meta = {
         "name": first.get("channel") or first.get("uploader") or info.get("uploader") or info.get("title") or ch["handle"],
