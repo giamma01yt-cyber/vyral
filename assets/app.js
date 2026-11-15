@@ -753,7 +753,7 @@ function channelCard(ch, i) {
     <div class="stripe"></div>
     <div class="ch-head">${avatar(ch, d)}
       <div class="ch-info"><div class="ch-name">${esc(d?.channel?.name || ch.handle)}</div>
-        <div class="ch-sub">${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>·` : ''}<span>${esc(ch.handle)}</span>${tab ? `<span>· ${tab}</span>` : ''}</div></div>
+        <div class="ch-sub">${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>·` : ''}${d?.channel?.likes != null ? `<span><b>${fmt(d.channel.likes)}</b> like</span>·` : ''}<span>${esc(ch.handle)}</span>${tab ? `<span>· ${tab}</span>` : ''}</div></div>
       <div class="ch-actions">
         <button class="ibtn pin-btn ${pinned ? 'on' : ''}" data-act="pin" data-id="${esc(ch.id)}" title="${pinned ? 'Togli dai fissati' : 'Fissa in alto'}">${ic('pin', 17)}</button>
         <a class="ibtn" href="${esc(d?.channel?.url || ch.url)}" target="_blank" rel="noopener" title="Apri canale">${ic('ext', 17)}</a>
@@ -1051,6 +1051,7 @@ document.addEventListener('click', e => {
   else if (a === 'reset-settings') confirmBox('Ripristinare le impostazioni?', 'Aspetto e opzioni torneranno come all\'inizio.', 'Ripristina').then(ok => { if (!ok) return; S.settings = withDefaults({ name: S.settings.name, platforms: S.settings.platforms }); saveSettingsSoon(); reEnrich(); render(); toast('Impostazioni ripristinate'); });
 });
 window.addEventListener('resize', () => { movePill(); initSegs(); });
+window.addEventListener('scroll', () => document.body.classList.toggle('scrolled', window.scrollY > 8), { passive: true });
 
 /* ============================================================
    LOGIN
