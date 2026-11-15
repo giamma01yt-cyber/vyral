@@ -15,6 +15,14 @@
       "url": "https://www.youtube.com/@Meowuefn",
       "yt_tab": "both",
       "added_at": 1794772661
+    },
+    {
+      "id": "youtube:@garmink",
+      "platform": "youtube",
+      "handle": "@Garmink",
+      "url": "https://www.youtube.com/@Garmink",
+      "yt_tab": "both",
+      "added_at": 1794772683
     }
   ]
 }
