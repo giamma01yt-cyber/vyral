@@ -22,7 +22,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Installa yt-dlp (ultima versione)
-        run: pip install -U "yt-dlp[default,curl-cffi]"      - name: Scarica statistiche
+        run: pip install -U "yt-dlp[default,curl-cffi]"
+      - name: Scarica statistiche
         run: python fetcher/vyral_core.py data
       - name: Salva nel repository
         run: |
