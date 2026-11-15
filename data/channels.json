@@ -76,6 +76,14 @@
       "url": "https://www.youtube.com/@cyrusfnn",
       "yt_tab": "both",
       "added_at": 1794786323
+    },
+    {
+      "id": "youtube:@spiryfnmaps",
+      "platform": "youtube",
+      "handle": "@spiryfnmaps",
+      "url": "https://www.youtube.com/@spiryfnmaps",
+      "yt_tab": "shorts",
+      "added_at": 1794786676
     }
   ]
 }
