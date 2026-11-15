@@ -7,6 +7,14 @@
       "url": "https://www.youtube.com/@Bryzee6",
       "yt_tab": "both",
       "added_at": 1794772637
+    },
+    {
+      "id": "youtube:@meowuefn",
+      "platform": "youtube",
+      "handle": "@Meowuefn",
+      "url": "https://www.youtube.com/@Meowuefn",
+      "yt_tab": "both",
+      "added_at": 1794772661
     }
   ]
 }
