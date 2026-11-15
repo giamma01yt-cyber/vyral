@@ -19,7 +19,13 @@ const EN = {
   'Dati da GitHub': 'Data from GitHub', 'Dati da il tuo PC': 'Data from your PC', 'Dati da demo': 'Demo data',
   'Avvio aggiornamento…': 'Starting update…', 'In coda su GitHub…': 'Queued on GitHub…', 'GitHub sta scaricando i dati…': 'GitHub is downloading the data…',
   'Il tuo PC sta scaricando i dati…': 'Your PC is downloading the data…', 'Scarico i dati (demo)…': 'Downloading data (demo)…',
-  'nelle ultime 24h': 'in the last 24h', 'Salvataggio…': 'Saving…', 'Sincronizzato': 'Synced', 'adesso': 'just now',
+  'Collega TikTok': 'Connect TikTok', 'Scollega': 'Disconnect', 'Collegato': 'Connected', 'dal PC': 'from PC', 'Fatto': 'Done',
+  'Accesso TikTok (solo su questo PC)': 'TikTok login (this PC only)', 'Scollegare TikTok?': 'Disconnect TikTok?', 'TikTok scollegato': 'TikTok disconnected',
+  "Serve per i profili che TikTok mostra solo a chi ha fatto l'accesso. L'accesso resta su questo computer e non va su GitHub.": "Needed for profiles TikTok only shows to signed-in users. The login stays on this computer and never goes to GitHub.",
+  "Vyral non userà più il tuo accesso TikTok su questo PC.": 'Vyral will no longer use your TikTok login on this PC.', 'TikTok collegato: aggiorno i dati…': 'TikTok connected: updating data…',
+  "TikTok mostra questi video solo a chi ha fatto l'accesso: collega il tuo account TikTok in Vyral.exe (Impostazioni → Social).": 'TikTok only shows these videos to signed-in users: connect your TikTok account in Vyral.exe (Settings → Social).',
+  "Il collegamento a TikTok si fa dal programma per PC (Vyral.exe).": 'Connecting TikTok is done from the PC app (Vyral.exe).',
+  'nelle ultime 24h': 'in the last 24h', 'like': 'likes', 'Salvataggio…': 'Saving…', 'Sincronizzato': 'Synced', 'adesso': 'just now',
   // home
   'Ecco come stanno andando i tuoi canali.': 'Here is how your channels are doing.',
   'Follower totali': 'Total followers', 'su tutti i canali': 'across all channels', 'Views ultimi video': 'Latest videos views', 'video analizzati': 'videos analyzed',
@@ -104,6 +110,7 @@ const EN = {
   'YouTube ha bloccato il server (anti-bot). Aggiorna dal programma per PC.': 'YouTube blocked the server (anti-bot). Refresh from the PC app.',
   'TikTok ha bloccato la richiesta: riprova più tardi o aggiorna dal PC.': 'TikTok blocked the request: try later or refresh from your PC.',
   'TikTok non ha restituito video (succede ogni tanto con i server di GitHub). Riprova più tardi o premi Aggiorna dal programma per PC.': "TikTok didn't return any videos (it happens now and then with GitHub's servers). Try later or press Refresh in the PC app.",
+  'Ho trovato i video ma TikTok non ha permesso di leggerli. Riprova più tardi o premi Aggiorna dal programma per PC.': 'I found the videos but TikTok did not allow reading them. Try later or press Refresh in the PC app.',
   'Nessun video trovato (profilo privato o richiesta bloccata).': 'No videos found (private profile or blocked request).',
   // login
   'Benvenuto su Vyral': 'Welcome to Vyral', 'Il tuo account è il tuo repository GitHub:': 'Your account is your GitHub repository:', 'stessi canali e impostazioni su PC e telefono.': 'same channels and settings on PC and phone.',

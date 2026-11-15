@@ -28,6 +28,36 @@ import vyral_core  # noqa: E402
 
 API = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 LOCK = threading.Lock()
+STORAGE = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Vyral")
+COOKIES = os.path.join(STORAGE, "tiktok_cookies.txt")  # accesso TikTok: resta solo su questo PC
+LOGIN_WIN = {"w": None}
+
+
+def _to_netscape(cookies):
+    """Converte i cookie di WebView2 nel formato che usa yt-dlp."""
+    import email.utils
+    lines = ["# Netscape HTTP Cookie File", "# Accesso TikTok di Vyral - resta solo su questo PC"]
+    for c in cookies:
+        for name, m in c.items():
+            domain = m["domain"] or ".tiktok.com"
+            if "tiktok" not in domain:
+                continue
+            try:
+                exp = int(email.utils.parsedate_to_datetime(m["expires"]).timestamp()) if m["expires"] else 0
+            except Exception:  # noqa: BLE001
+                exp = 0
+            if exp <= 0:
+                exp = int(time.time()) + 30 * 86400
+            lines.append("\t".join([domain, "TRUE" if domain.startswith(".") else "FALSE", m["path"] or "/",
+                                     "TRUE" if m["secure"] else "FALSE", str(exp), name, m.value]))
+    return "\n".join(lines) + "\n", any(l.split("\t")[5] == "sessionid" for l in lines[2:])
+
+
+def _tiktok_connected():
+    if not os.path.exists(COOKIES):
+        return False
+    with open(COOKIES, encoding="utf-8") as f:
+        return any(l.split("\t")[5:6] == ["sessionid"] for l in f if not l.startswith("#"))
 
 
 def _gh(auth, path, method="GET", body=None, raw=False):
@@ -89,6 +119,7 @@ class Api:
             channels = _get_json(auth, "data/channels.json", {})[0].get("channels", [])
             settings = _get_json(auth, "data/settings.json", {})[0]
             prev = _get_json(auth, "data/stats.json", {})[0]
+            vyral_core.TIKTOK_COOKIES = COOKIES if _tiktok_connected() else None
             stats = vyral_core.build_stats(channels, settings, prev, source="pc", log=lambda *_: None)
             _put_json(auth, "data/stats.json", stats, "Statistiche aggiornate dal PC [skip ci]")
             return {"ok": True, "updated_at": stats["updated_at"]}
@@ -96,6 +127,46 @@ class Api:
             return {"error": str(e)[:300]}
         finally:
             LOCK.release()
+
+    # ---------- accesso TikTok (solo su questo PC)
+    def tiktok_status(self):
+        return {"connected": _tiktok_connected()}
+
+    def tiktok_login_start(self):
+        import webview
+        if LOGIN_WIN["w"]:
+            return {"ok": True}
+        LOGIN_WIN["w"] = webview.create_window("Accedi a TikTok - Vyral", "https://www.tiktok.com/login",
+                                               width=520, height=780)
+        LOGIN_WIN["w"].events.closed += lambda: LOGIN_WIN.update(w=None)
+        return {"ok": True}
+
+    def tiktok_login_finish(self):
+        w = LOGIN_WIN["w"]
+        if not w:
+            return {"error": "La finestra di TikTok è stata chiusa prima di salvare. Riprova."}
+        try:
+            text, has_session = _to_netscape(w.get_cookies() or [])
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"Non riesco a leggere l'accesso: {e}"}
+        if not has_session:
+            return {"error": "Non risulta l'accesso a TikTok: accedi nella finestra e poi premi di nuovo Fatto."}
+        os.makedirs(STORAGE, exist_ok=True)
+        with open(COOKIES, "w", encoding="utf-8") as f:
+            f.write(text)
+        try:
+            w.destroy()
+        except Exception:  # noqa: BLE001
+            pass
+        LOGIN_WIN["w"] = None
+        return {"ok": True}
+
+    def tiktok_logout(self):
+        try:
+            os.remove(COOKIES)
+        except OSError:
+            pass
+        return {"ok": True}
 
     def version(self):
         import yt_dlp
@@ -105,7 +176,7 @@ class Api:
 def main():
     import webview
 
-    storage = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Vyral")
+    storage = STORAGE
     os.makedirs(storage, exist_ok=True)
     webview.create_window(
         "Vyral",

@@ -735,7 +735,8 @@ function channelCard(ch, i) {
   if (!d || (!d.videos && !d.error)) {
     body = `<div class="waiting"><div class="radar"><i></i></div><b style="color:var(--txt)">In attesa dei dati</b><br>${S.busy ? 'Aggiornamento in corso…' : 'Premi <b>Aggiorna</b> per scaricare le statistiche.'}</div>`;
   } else if (d.error && !d.videos) {
-    body = `<div class="err-box"><b>Non riesco a leggere questo canale.</b><br>${esc(d.error)}</div>`;
+    const ttBtn = d.needs_login && S.backend.kind === 'pc' ? `<div style="margin-top:10px"><button class="btn sm primary" data-act="tt-login">${pIcon('tiktok', 14)}Collega TikTok</button></div>` : '';
+    body = `<div class="err-box"><b>Non riesco a leggere questo canale.</b><br>${esc(d.error)}${ttBtn}</div>`;
   } else {
     const a = d.agg || {};
     body = `<div class="mini-kpis">
@@ -745,7 +746,7 @@ function channelCard(ch, i) {
       <div><div class="l">Views/ora</div><div class="v">${cnt(a.avgVph)}</div></div></div>
       ${d.error ? `<div class="err-box soft">Ultimo aggiornamento fallito (${esc(d.error)}): mostro i dati precedenti.</div>` : ''}
       <div class="vlist">${d.videos.map((x, k) => videoRow(x, k, m)).join('') || '<p class="mut" style="padding:14px">Nessun video.</p>'}</div>
-      <div class="card-foot"><span>Aggiornato ${ago(d.fetched_at)}</span><span>${d.videos.length} video</span></div>`;
+      <div class="card-foot"><span>Aggiornato ${ago(d.fetched_at)}</span>${d.needs_login ? `<span class="badge low" title="TikTok mostra questi video solo con l'accesso: li aggiorna il programma per PC">${ic('pc', 11)}dal PC</span>` : `<span>${d.videos.length} video</span>`}</div>`;
   }
   const pinned = isPinned(ch.id);
   return `<article class="ccard glass glow-card rise ${pinned ? 'pinned' : ''}" style="--i:${i + 1};${pVars(ch.platform)};--p1:${pl.c1}">
@@ -878,7 +879,9 @@ function viewSettings(v, keep) {
     `<div class="set-row" style="display:block"><div class="t" style="margin-bottom:12px"><b>Statistiche visibili</b><small>Scegli cosa mostrare sotto ogni video.</small></div><div class="mchips">${Object.entries(METRICS).map(([k, [l, i]]) => `<button class="mchip ${s.metrics[k] ? 'on' : ''}" data-metric="${k}">${ic(i, 14)}${l}</button>`).join('')}</div></div>`, 2)}
   ${sec('social', 'share2', 'Social',
     `<div class="set-row"><div class="plist">${s.platforms.map(p => `<div class="prow" style="${pVars(p)}"><div class="pi">${pIcon(p, 18)}</div><div class="pn">${PLATFORMS[p].name} <small>· ${chOf(p).length} canali</small></div>${s.platforms.length > 1 ? `<button class="ibtn danger" data-act="rm-social" data-p="${p}" title="Nascondi">${ic('x', 16)}</button>` : ''}</div>`).join('')}
-    <button class="nav-add" data-act="add-social" style="margin-top:4px">${ic('plus', 16, 2.4)}Aggiungi social</button></div></div>`, 3)}
+    <button class="nav-add" data-act="add-social" style="margin-top:4px">${ic('plus', 16, 2.4)}Aggiungi social</button></div></div>`
+    + (kind === 'pc' ? row('Accesso TikTok (solo su questo PC)', "Serve per i profili che TikTok mostra solo a chi ha fatto l'accesso. L'accesso resta su questo computer e non va su GitHub.",
+      TT.connected ? `<span class="badge up">${ic('check', 12, 3)} Collegato</span><button class="btn sm danger" data-act="tt-logout">Scollega</button>` : `<button class="btn primary" data-act="tt-login">${pIcon('tiktok', 15)}Collega TikTok</button>`) : ''), 3)}
   ${sec('aggiornamento', 'sync', 'Aggiornamento',
     row('Aggiornamento automatico', kind === 'pc' ? 'Il programma per PC scarica i dati da solo ogni tanto; GitHub lo fa comunque ogni 30 minuti.' : 'GitHub scarica i dati da solo ogni 30 minuti, anche a PC spento.', `<span class="badge up">${ic('check', 12, 3)} Ogni 30 min</span>`) +
     row('Ricarica la pagina', 'Ogni quanto l\'app controlla se ci sono dati nuovi.', segm('auto_reload', [[0, 'Mai'], [2, '2 min'], [5, '5 min'], [15, '15 min']])) +
@@ -957,6 +960,31 @@ async function deleteChannel(id) {
   render();
   try { await S.backend.saveChannels(S.channels); toast('Canale rimosso'); }
   catch (e) { S.channels = prev; render(); toast(e.message, true); }
+}
+const TT = { connected: false };
+async function ttRefreshStatus() {
+  if (!window.pywebview?.api?.tiktok_status) return;
+  try { TT.connected = !!(await window.pywebview.api.tiktok_status()).connected; } catch { }
+}
+async function ttLogin() {
+  const api = window.pywebview?.api;
+  if (!api?.tiktok_login_start) { toast("Il collegamento a TikTok si fa dal programma per PC (Vyral.exe).", true); return; }
+  await api.tiktok_login_start();
+  modal(`<h3>Collega TikTok</h3><p>Si è aperta una finestra di TikTok: <b>accedi con il tuo account</b> (va bene anche il codice QR dal telefono). Quando vedi la tua pagina TikTok, torna qui e premi <b>Fatto</b>.</p>
+    <p class="mut" style="font-size:13px">L'accesso resta solo su questo computer: non viene salvato su GitHub né sul telefono.</p>
+    <div class="acts"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" data-ok>${ic('check', 16, 2.6)}Fatto</button></div>`, (bg, close) => {
+    bg.querySelector('[data-ok]').onclick = async () => {
+      const r = await api.tiktok_login_finish();
+      if (r?.error) { toast(r.error, true); return; }
+      close(); TT.connected = true; toast('TikTok collegato: aggiorno i dati…');
+      if (S.route.name === 'settings') rerenderView();
+      refresh();
+    };
+  });
+}
+async function ttLogout() {
+  if (!await confirmBox('Scollegare TikTok?', "Vyral non userà più il tuo accesso TikTok su questo PC.", 'Scollega')) return;
+  await window.pywebview.api.tiktok_logout(); TT.connected = false; toast('TikTok scollegato'); rerenderView();
 }
 function togglePin(id) {
   const p = S.settings.pinned || [];
@@ -1044,6 +1072,8 @@ document.addEventListener('click', e => {
   else if (a === 'rm-social') removeSocial(t.dataset.p);
   else if (a === 'del-ch') deleteChannel(t.dataset.id);
   else if (a === 'pin') togglePin(t.dataset.id);
+  else if (a === 'tt-login') ttLogin();
+  else if (a === 'tt-logout') ttLogout();
   else if (a === 'refresh') refresh();
   else if (a === 'logout') logout();
   else if (a === 'export') exportBackup();
@@ -1139,6 +1169,7 @@ async function boot() {
 let pcTimer = null;
 function pcAutoRefresh() {
   if (!S.backend || S.backend.kind !== 'pc') return;
+  ttRefreshStatus();
   const stale = () => S.channels.length && (!S.stats.updated_at || Date.now() / 1000 - S.stats.updated_at > 20 * 60);
   if (stale()) refresh();
   clearInterval(pcTimer);
