@@ -68,6 +68,14 @@
       "handle": "@brokenxp1",
       "url": "https://www.tiktok.com/@brokenxp1",
       "added_at": 1794786238
+    },
+    {
+      "id": "youtube:@cyrusfnn",
+      "platform": "youtube",
+      "handle": "@cyrusfnn",
+      "url": "https://www.youtube.com/@cyrusfnn",
+      "yt_tab": "both",
+      "added_at": 1794786323
     }
   ]
 }
