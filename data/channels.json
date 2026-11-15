@@ -39,6 +39,14 @@
       "url": "https://www.youtube.com/@nestleuefn",
       "yt_tab": "both",
       "added_at": 1794774193
+    },
+    {
+      "id": "youtube:@ramofnmaps",
+      "platform": "youtube",
+      "handle": "@ramofnmaps",
+      "url": "https://www.youtube.com/@ramofnmaps",
+      "yt_tab": "both",
+      "added_at": 1794774205
     }
   ]
 }
