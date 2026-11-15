@@ -1,0 +1,37 @@
+name: Crea Vyral.exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["index.html", "assets/**", "desktop/**", "fetcher/**"]
+  schedule:
+    - cron: "0 6 1 * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dipendenze
+        run: pip install -U pyinstaller pywebview yt-dlp
+      - name: Build
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name Vyral
+          --icon assets/logo.ico --paths fetcher --hidden-import vyral_core
+          --add-data "index.html;web" --add-data "assets;web/assets" --add-data "manifest.webmanifest;web"
+          desktop/vyral_desktop.py
+      - name: Pubblica release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-latest
+          name: Vyral per Windows
+          body: Scarica **Vyral.exe** qui sotto e aprilo. Si aggiorna da solo ogni mese.
+          make_latest: true
+          files: dist/Vyral.exe
