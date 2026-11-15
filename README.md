@@ -28,8 +28,7 @@ Il repository **è** il tuo account: dentro `data/` ci sono canali, impostazioni
 
 ### 1. Crea il repository
 1. Su GitHub crea un repository **pubblico** chiamato `vyral` (pubblico serve per avere GitHub Pages gratis).
-2. Carica tutti i file di questa cartella (*Add file → Upload files*, trascina tutto dentro).
-3. Aggiungi i due file della cartella `workflows-github` nel posto giusto: *Add file → Create new file*, come nome scrivi `.github/workflows/update-stats.yml`, incolla il contenuto del file omonimo e premi *Commit*. Ripeti con `.github/workflows/build-exe.yml`. Poi puoi cancellare la cartella `workflows-github` dal repo.
+2. Carica tutti i file di questa cartella, **compresa la cartella nascosta `.github`**. Il modo più semplice è [GitHub Desktop](https://desktop.github.com/): *File → Add local repository* → *Publish repository*.
 
 ### 2. Attiva il sito
 *Settings → Pages* → **Source: Deploy from a branch** → branch `main`, cartella `/ (root)` → **Save**.
@@ -49,6 +48,31 @@ Dopo un minuto il sito è su `https://TUONOME.github.io/vyral/`.
 ### 5. Accedi
 - **iPhone**: apri il sito in Safari → incolla il token → *Condividi → Aggiungi alla schermata Home*. Si apre a schermo intero come un'app.
 - **PC**: apri `Vyral.exe` → stesso utente, stesso token.
+
+## Collega YouTube Studio
+
+Tempo di visualizzazione, durata media, % visualizzata, impression, CTR, iscritti guadagnati/persi, fonti di traffico, paesi, età e sesso, dispositivi e guadagni dei **tuoi** canali. I dati vengono salvati **cifrati** (`data/studio.enc.json`): nel repository pubblico sono illeggibili, Vyral li apre con la tua password.
+
+**A. Google Cloud (5 minuti, una volta sola)**
+1. Apri [console.cloud.google.com](https://console.cloud.google.com/) → in alto *Seleziona un progetto* → **Nuovo progetto** → nome `Vyral` → **Crea** (poi selezionalo).
+2. Nella barra di ricerca in alto cerca **YouTube Analytics API** → **Abilita**. Ripeti con **YouTube Data API v3** → **Abilita**.
+3. Cerca **Google Auth Platform** (o *Schermata consenso OAuth*) → **Inizia**:
+   nome app `Vyral`, la tua email → *Avanti* → Pubblico: **Esterno** → la tua email → accetta → **Crea**.
+4. Nel menu a sinistra **Pubblico** → **Pubblica app** → **Conferma**. *(Importante: se resta "In test", l'accesso scade dopo 7 giorni.)*
+5. Menu a sinistra **Client** → **Crea client** → Tipo: **App desktop** → nome `Vyral` → **Crea** → **Scarica JSON** (resta nella cartella Download).
+
+**B. Collega i canali (sul PC)**
+1. Doppio clic su `studio\studio_setup.bat` (serve Python). Trova da solo il file JSON in Download.
+2. Si apre il browser: scegli l'account e **il canale**. Se compare *"Google non ha verificato questa app"* → **Avanzate** → **Vai a Vyral** → spunta tutti i permessi → **Continua**. È la tua app, è normale.
+3. Alla domanda *"Vuoi collegare un altro canale?"* scrivi `s` e ripeti per ogni canale (Bryzee6, Meowuefn, ecc.).
+4. Scegli una **password** (minimo 8 caratteri). Il programma copia negli appunti un testo segreto.
+
+**C. GitHub**
+1. Nel repository: **Settings → Secrets and variables → Actions → New repository secret**. Name: `VYRAL_STUDIO`, Secret: incolla (Ctrl+V) → **Add secret**.
+2. **Add file → Create new file**, nome `.github/workflows/studio.yml`, incolla il contenuto di `workflows-github/studio.yml` → **Commit changes**.
+3. **Actions → Aggiorna YouTube Studio → Run workflow**. Dopo un minuto apri Vyral → **YouTube Studio** → inserisci la password (una volta per dispositivo).
+
+Si aggiorna da solo ogni 3 ore. YouTube fornisce questi dati con 1–3 giorni di ritardo. I guadagni compaiono solo per i canali monetizzati.
 
 ## Note
 

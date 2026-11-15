@@ -80,6 +80,9 @@ const P = {
 const ic = (n, s = 18, w = 2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
 const LOGO_SVG = (s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24"><path d="M6 7.5l5.5 9 7-11.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 5h4.5v4.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+/* repository predefinito (il tuo): così basta incollare il token */
+const DEFAULT_REPO = { owner: 'giamma01yt-cyber', repo: 'vyral' };
+
 /* ---------------- social ---------------- */
 const PLATFORMS = {
   youtube: {
@@ -164,7 +167,7 @@ const THEMES = {
   gold: { n: 'Oro', a1: '#ffd36b', a2: '#ff8a3d' },
   mono: { n: 'Mono', a1: '#e5e7eb', a2: '#6b7280' },
 };
-const METRICS = { views: ['Views', 'eye'], likes: ['Like', 'heart'], comments: ['Commenti', 'msg'], shares: ['Condivisioni', 'share'], saves: ['Salvataggi', 'save'], er: ['Engagement', 'bolt'], vph: ['Views/ora', 'clock'], growth: ['Crescita', 'trend'], spark: ['Grafico', 'chart'] };
+const METRICS = { views: ['Views', 'eye'], likes: ['Like', 'heart'], comments: ['Commenti', 'msg'], shares: ['Condivisioni', 'share'], saves: ['Salvataggi', 'save'], er: ['Engagement', 'bolt'], vph: ['Views/ora', 'clock'], growth: ['Crescita', 'trend'], spark: ['Grafico', 'chart'], studio: ['YouTube Studio', 'play'] };
 const DEFAULT_SETTINGS = {
   name: '', theme: 'aurora', bg: 'aurora', oled: false, glow: true, animations: true, density: 'comfy', radius: 20,
   videos_per_channel: 3, hot_threshold: 1.3, yt_tab: 'both',
@@ -222,7 +225,8 @@ class GitHubBackend {
       this.getJSON('data/settings.json', {}),
       this.getJSON('data/stats.json', { channels: {} }),
     ]);
-    return { channels: c.channels || [], settings: s, stats: st || { channels: {} } };
+    const studio = await this.getJSON('data/studio.enc.json', null).catch(() => null);
+    return { channels: c.channels || [], settings: s, stats: st || { channels: {} }, studio };
   }
   async loadStats() { return this.getJSON('data/stats.json', { channels: {} }); }
   saveChannels(list) { return this.putJSON('data/channels.json', { channels: list }, 'Vyral: canali aggiornati'); }
@@ -256,6 +260,27 @@ class GitHubBackend {
   }
 }
 
+/* Solo visione: legge i dati pubblici del repository, senza token */
+class ViewBackend {
+  constructor(auth) { this.a = auth; this.kind = 'view'; }
+  async raw(path, def) {
+    const r = await fetch(`https://raw.githubusercontent.com/${this.a.owner}/${this.a.repo}/main/${path}?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.status === 404) return def;
+    if (!r.ok) throw new Error('Non riesco a leggere il repository (' + r.status + ').');
+    return r.json();
+  }
+  async verify() { const c = await this.raw('data/channels.json', null); if (!c) throw new Error('Repository non trovato o senza Vyral.'); }
+  async load() {
+    const [c, s, st, studio] = await Promise.all([this.raw('data/channels.json', { channels: [] }), this.raw('data/settings.json', {}), this.raw('data/stats.json', { channels: {} }), this.raw('data/studio.enc.json', null).catch(() => null)]);
+    return { channels: c.channels || [], settings: s, stats: st || { channels: {} }, studio };
+  }
+  loadStats() { return this.raw('data/stats.json', { channels: {} }); }
+  ro() { throw new Error('Sei in modalità solo visione: accedi col token per modificare.'); }
+  async saveChannels() { this.ro(); }
+  async saveSettings() { /* le preferenze restano su questo dispositivo */ LS.set('viewSettings', S.settings); }
+  async refresh() { this.ro(); }
+}
+
 /* Demo: nessun account, dati finti salvati nel browser */
 class DemoBackend {
   constructor() { this.kind = 'demo'; }
@@ -268,7 +293,7 @@ class DemoBackend {
       d.stats = this.gen(d.channels, d.settings, null);
       LS.set('demo', d);
     }
-    return d;
+    return { ...d, studio: { plain: studioDemo() } };
   }
   async loadStats() { return LS.get('demo').stats; }
   async saveChannels(list) { const d = LS.get('demo'); d.channels = list; LS.set('demo', d); }
@@ -344,6 +369,8 @@ function enrich(entry, thr) {
     v.delta = h.length > 1 ? h[h.length - 1][1] - h[h.length - 2][1] : null;
     const dayAgo = h.find(p => p[0] >= now - 86400 - 1800);
     v.delta24 = h.length > 1 && dayAgo && dayAgo !== h[h.length - 1] ? h[h.length - 1][1] - dayAgo[1] : null;
+    const span = dayAgo ? h[h.length - 1][0] - dayAgo[0] : 0;
+    v.deltaLbl = span >= 20 * 3600 ? 'in 24h' : span >= 3600 ? `in ${Math.round(span / 3600)}h` : `in ${Math.max(1, Math.round(span / 60))} min`;
   }
   const avgOf = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
   entry.agg = { avgViews: avg, totViews: vw.reduce((a, v) => a + v.views, 0), avgER: avgOf(vids.map(v => v.er).filter(x => x != null)), avgVph: avgOf(vids.map(v => v.vph).filter(x => x != null)) };
@@ -440,6 +467,7 @@ function applySettings() {
   b.classList.toggle('glow', !!s.glow);
   b.classList.toggle('no-anim', !s.animations);
   b.classList.toggle('compact', s.density === 'compact');
+  b.classList.toggle('ro', S.backend?.kind === 'view');
   $('meta[name="theme-color"]').content = s.oled ? '#000000' : '#07070c';
 }
 function setPageColor(p) {
@@ -475,6 +503,7 @@ function parseRoute() {
   const h = location.hash.replace(/^#\/?/, '').split('/');
   if (h[0] === 'p' && PLATFORMS[h[1]]) return { name: 'platform', p: h[1], tab: h[2] === 'tutti' ? 'all' : 'channels' };
   if (h[0] === 'tutti') return { name: 'all' };
+  if (h[0] === 'studio') return { name: 'studio' };
   if (h[0] === 'impostazioni') return { name: 'settings' };
   return { name: 'home' };
 }
@@ -502,18 +531,19 @@ function renderShell() {
   const initials = (s.name || S.auth?.owner || 'V')[0].toUpperCase();
   $('#app').innerHTML = `
   <aside class="sidebar">
-    <div class="brand"><div class="logo">${LOGO_SVG(22)}</div><div><b>Vyral</b><small>${{ demo: 'Modalità demo', pc: 'Programma per PC' }[S.backend.kind] || 'Statistiche social'}</small></div></div>
+    <div class="brand"><div class="logo">${LOGO_SVG(22)}</div><div><b>Vyral</b><small>${{ demo: 'Modalità demo', pc: 'Programma per PC', view: 'Solo visione' }[S.backend.kind] || 'Statistiche social'}</small></div></div>
     <nav class="nav" id="nav"><span class="nav-pill" id="navPill"></span>
       ${item('#/', r.name === 'home', ic('home', 18), 'Home')}
       ${item('#/tutti', r.name === 'all', ic('grid', 18), 'Tutti i video', `<span class="cnt">${allVideos().length}</span>`)}
       <div class="nav-label">Social</div>
-      ${navP.map(p => item('#/p/' + p, r.name === 'platform' && r.p === p, `<span style="color:${PLATFORMS[p].c1}">${pIcon(p, 18)}</span>`, PLATFORMS[p].name, `<span class="cnt">${chOf(p).length}</span>`, PLATFORMS[p].c1)).join('')}
+      ${navP.map(p => item('#/p/' + p, r.name === 'platform' && r.p === p, `<span style="color:${PLATFORMS[p].c1}">${pIcon(p, 18)}</span>`, PLATFORMS[p].name, `<span class="cnt">${chOf(p).length}</span>`, PLATFORMS[p].c1)
+        + (p === 'youtube' ? item('#/studio', r.name === 'studio', `<span style="color:${PLATFORMS.youtube.c1}">${ic('chart', 17)}</span>`, 'YouTube Studio', studioOn() ? (STUDIO.data ? '' : `<span class="cnt">${ic('key', 11)}</span>`) : '<span class="cnt">nuovo</span>', PLATFORMS.youtube.c1).replace('class="nav-item', 'class="nav-item sub') : '')).join('')}
       <button class="nav-add" data-act="add-social">${ic('plus', 16, 2.4)}Aggiungi social</button>
     </nav>
     <div class="side-bottom">
       <div class="sync-card" id="syncCard">${syncText()}</div>
       ${item('#/impostazioni', r.name === 'settings', ic('gear', 18), 'Impostazioni')}
-      <div class="me"><div class="av">${esc(initials)}</div><div style="min-width:0"><b>${esc(s.name || S.auth?.owner || 'Demo')}</b><small>${S.backend.kind === 'demo' ? 'Account demo' : esc(S.auth.owner + '/' + S.auth.repo)}</small></div></div>
+      <div class="me"><div class="av">${esc(initials)}</div><div style="min-width:0"><b>${esc(s.name || S.auth?.owner || 'Demo')}</b><small>${S.backend.kind === 'demo' ? 'Account demo' : esc(S.auth.owner + '/' + S.auth.repo) + (S.backend.kind === 'view' ? ' · solo visione' : '')}</small></div></div>
     </div>
   </aside>
   <main class="main">
@@ -557,27 +587,27 @@ let shellKey = '';
 function render() {
   S.route = parseRoute();
   const r = S.route;
-  setPageColor(r.name === 'platform' ? r.p : null);
+  setPageColor(r.name === 'platform' ? r.p : r.name === 'studio' ? 'youtube' : null);
   const key = JSON.stringify([r, S.settings.platforms, S.channels.length, S.settings.name]);
   if (key !== shellKey || !$('#view')) { renderShell(); shellKey = key; }
   const v = $('#view');
   v.className = '';
   void v.offsetWidth;
   v.className = 'view';
-  const t = { home: ['Home', viewHome], all: ['Tutti i video', viewAll], settings: ['Impostazioni', viewSettings], platform: [PLATFORMS[r.p]?.name, viewPlatform] }[r.name];
+  const t = { home: ['Home', viewHome], all: ['Tutti i video', viewAll], settings: ['Impostazioni', viewSettings], platform: [PLATFORMS[r.p]?.name, viewPlatform], studio: ['YouTube Studio', viewStudio] }[r.name];
   $('#pageTitle').textContent = t[0];
   document.title = t[0] + ' · Vyral';
   t[1](v);
   countUp(v);
   initSegs(v);
-  requestAnimationFrame(() => { $$('.cmp-row .bar i', v).forEach(i => i.style.width = i.dataset.w); });
+  requestAnimationFrame(() => { $$('.cmp-row .bar i, .sbar .bar i', v).forEach(i => i.style.width = i.dataset.w); });
 }
 /* aggiorna solo il contenuto (senza animazione di pagina) */
 function rerenderView() {
   const v = $('#view'); if (!v) return render();
   const y = window.scrollY;
   const r = S.route;
-  ({ home: viewHome, all: viewAll, settings: viewSettings, platform: viewPlatform })[r.name](v, true);
+  ({ home: viewHome, all: viewAll, settings: viewSettings, platform: viewPlatform, studio: viewStudio })[r.name](v, true);
   countUp(v); initSegs(v);
   $$('.cmp-row .bar i', v).forEach(i => i.style.width = i.dataset.w);
   window.scrollTo(0, y);
@@ -653,6 +683,7 @@ function viewPlatform(v, keep) {
     <div class="row1">
       <div class="bi">${pIcon(p, 30)}</div>
       <div><h2>${pl.name}</h2><div class="sub">${chs.length} ${chs.length === 1 ? 'canale' : 'canali'} · ${fmt(tv)} views sugli ultimi video</div></div>
+      ${p === 'youtube' ? `<a class="btn sm studio-btn" href="#/studio">${ic('chart', 15)}YouTube Studio</a>` : ''}
       <div class="seg tabs"><button class="${r.tab === 'channels' ? 'on' : ''}" data-go="#/p/${p}">${ic('users', 15)}Canali</button><button class="${r.tab === 'all' ? 'on' : ''}" data-go="#/p/${p}/tutti">${ic('grid', 15)}Visualizza tutti</button></div>
     </div>
     <form class="addrow" id="addForm" autocomplete="off">
@@ -710,7 +741,7 @@ function videoRow(x, k, m) {
       <div class="vtop"><a class="vt" href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title)}</a>${m.spark ? spark(x.history) : ''}</div>
       <div class="vm"><span title="${x.timestamp ? new Date(x.timestamp * 1000).toLocaleString('it-IT') : ''}">${ago(x.timestamp)}</span>
         ${x.hot ? `<span class="badge hot">🔥 ${x.perf.toFixed(1)}× media</span>` : x.perf != null && x.perf <= .7 ? `<span class="badge low">${x.perf.toFixed(1)}× media</span>` : ''}
-        ${m.growth && x.delta24 > 0 ? `<span class="badge up" title="Views guadagnate nelle ultime 24 ore">+${fmt(x.delta24)} in 24h</span>` : m.growth && x.delta > 0 ? `<span class="badge up" title="Dall'aggiornamento precedente">+${fmt(x.delta)}</span>` : ''}</div>
+        ${m.growth && x.delta24 > 0 ? `<span class="badge up" title="Views guadagnate nel periodo indicato">+${fmt(x.delta24)} ${x.deltaLbl}</span>` : m.growth && x.delta > 0 ? `<span class="badge up" title="Dall'aggiornamento precedente">+${fmt(x.delta)}</span>` : ''}</div>
       <div class="chips">
         ${chip('views', 'eye', fmt(x.views), 'Visualizzazioni: ' + full(x.views))}
         ${chip('likes', 'heart', fmt(x.likes), 'Mi piace: ' + full(x.likes))}
@@ -719,7 +750,18 @@ function videoRow(x, k, m) {
         ${chip('saves', 'save', x.saves != null ? fmt(x.saves) : null, 'Salvataggi: ' + full(x.saves))}
         ${chip('er', 'bolt', pct(x.er), 'Engagement = interazioni / views', 'er')}
         ${chip('vph', 'clock', fmt(x.vph) + '/h', 'Views medie all\'ora dalla pubblicazione')}
+        ${studioChips(x, m)}
       </div></div></div>`;
+}
+
+function studioChips(x, m) {
+  if (!m.studio || !STUDIO.data) return '';
+  const sv = studioVideo(x.id); if (!sv) return '';
+  const c = (icon, val, title) => val == null ? '' : `<span class="chip studio" title="${esc(title)}">${ic(icon, 13)}${val}</span>`;
+  return c('play', sv.averageViewDuration != null ? secs(sv.averageViewDuration) + ' medi' : null, 'Durata media di visualizzazione (YouTube Studio)')
+    + c('chart', sv.averageViewPercentage != null ? Math.round(sv.averageViewPercentage) + '% visto' : null, 'Percentuale media visualizzata (YouTube Studio)')
+    + c('grid', sv.videoThumbnailImpressionsClickRate != null ? 'CTR ' + ctrP(sv.videoThumbnailImpressionsClickRate).toFixed(1).replace('.', ',') + '%' : null, 'CTR delle impression (YouTube Studio)')
+    + c('users', sv.subscribersGained ? '+' + fmt(sv.subscribersGained) + ' iscritti' : null, 'Iscritti ottenuti con questo video (YouTube Studio)');
 }
 
 /* ---------------- TABELLA (Visualizza tutti) ---------------- */
@@ -812,12 +854,14 @@ function viewSettings(v, keep) {
     row('Ricarica la pagina', 'Ogni quanto l\'app controlla se ci sono dati nuovi.', segm('auto_reload', [[0, 'Mai'], [2, '2 min'], [5, '5 min'], [15, '15 min']])) +
     row('Aggiorna adesso', kind === 'pc' ? 'Scarica i dati direttamente da questo PC.' : 'Avvia subito l\'aggiornamento su GitHub (circa 1-2 minuti).', `<button class="btn primary" data-act="refresh">${ic('ref', 16)}Aggiorna ora</button>`), 4)}
   ${sec('account', 'key', 'Account',
+    kind === 'view' ? row('Solo visione', 'Vedi le statistiche ma non puoi aggiungere canali o aggiornare. Esci e accedi col token per avere tutto.', `<button class="btn" data-act="logout">${ic('logout', 16)}Esci</button>`) :
     kind === 'demo' ? row('Modalità demo', 'I dati sono finti e restano solo su questo dispositivo. Esci e accedi con GitHub per usare i tuoi canali.', `<button class="btn" data-act="logout">${ic('logout', 16)}Esci dalla demo</button>`) :
       row('Repository', 'Il tuo account: canali, impostazioni e statistiche sono salvati qui.', `<a class="btn" href="${repoUrl}" target="_blank" rel="noopener">${ic('gh', 16)}${esc(S.auth.owner + '/' + S.auth.repo)}</a>`) +
       row('Programma per PC', 'Scarica Vyral.exe: stesso account, aggiornamenti più veloci.', `<a class="btn" href="${repoUrl}/releases/latest" target="_blank" rel="noopener">${ic('pc', 16)}Scarica Vyral.exe</a>`) +
       row('Attività di GitHub', 'Controlla gli aggiornamenti automatici.', `<a class="btn" href="${repoUrl}/actions" target="_blank" rel="noopener">${ic('ext', 16)}Apri Actions</a>`) +
       row('Esci', 'Il token viene cancellato da questo dispositivo. I dati restano su GitHub.', `<button class="btn danger" data-act="logout">${ic('logout', 16)}Esci</button>`), 5)}
   ${sec('dati', 'db', 'Dati',
+    (studioOn() && !STUDIO.env.plain ? row('YouTube Studio', STUDIO.data ? 'Sbloccato su questo dispositivo.' : 'Bloccato: inserisci la password nella pagina YouTube Studio.', STUDIO.data ? `<button class="btn" data-act="studio-lock">${ic('key', 16)}Blocca di nuovo</button>` : `<a class="btn" href="#/studio">${ic('key', 16)}Sblocca</a>`) : '') +
     row('Backup', 'Scarica canali e impostazioni in un file.', `<button class="btn" data-act="export">${ic('down', 16)}Esporta</button>`) +
     row('Ripristina backup', 'Carica un file esportato in precedenza.', `<label class="btn">${ic('up', 16)}Importa<input type="file" accept=".json" id="importFile" hidden></label>`) +
     row('Impostazioni predefinite', 'Riporta l\'aspetto e le opzioni come all\'inizio. I canali restano.', `<button class="btn danger" data-act="reset-settings">Ripristina</button>`), 6)}
@@ -962,6 +1006,7 @@ document.addEventListener('click', e => {
   else if (a === 'refresh') refresh();
   else if (a === 'logout') logout();
   else if (a === 'export') exportBackup();
+  else if (a === 'studio-lock') { LS.del('studioPw'); STUDIO.data = null; toast('YouTube Studio bloccato'); render(); }
   else if (a === 'reset-settings') confirmBox('Ripristinare le impostazioni?', 'Aspetto e opzioni torneranno come all\'inizio.', 'Ripristina').then(ok => { if (!ok) return; S.settings = withDefaults({ name: S.settings.name, platforms: S.settings.platforms }); saveSettingsSoon(); reEnrich(); render(); toast('Impostazioni ripristinate'); });
 });
 window.addEventListener('resize', () => { movePill(); initSegs(); });
@@ -971,7 +1016,7 @@ window.addEventListener('resize', () => { movePill(); initSegs(); });
    ============================================================ */
 function renderLogin(err, prefill) {
   document.body.dataset.bg = 'aurora';
-  const guess = { owner: '', repo: 'vyral' };
+  const guess = { ...DEFAULT_REPO };
   const m = location.hostname.match(/^([\w-]+)\.github\.io$/i);
   if (m) { guess.owner = m[1]; const seg = location.pathname.split('/').filter(Boolean)[0]; if (seg && !seg.includes('.')) guess.repo = seg; }
   const saved = prefill || LS.get('lastLogin', {});
@@ -981,7 +1026,7 @@ function renderLogin(err, prefill) {
     <p>Il tuo account è il tuo repository GitHub:<br>stessi canali e impostazioni su PC e telefono.</p>
     <div class="field"><label>Utente GitHub</label><div class="input">${ic('user', 17)}<input id="lo" value="${esc(saved.owner || guess.owner)}" placeholder="es. giqmmq" autocapitalize="off" required></div></div>
     <div class="field"><label>Repository</label><div class="input">${ic('gh', 17)}<input id="lr" value="${esc(saved.repo || guess.repo)}" placeholder="vyral" autocapitalize="off" required></div></div>
-    <div class="field"><label>Token di accesso</label><div class="input">${ic('key', 17)} <input id="lt" type="password" value="${esc(prefill?.token || '')}" placeholder="github_pat_…" autocapitalize="off" required><button type="button" class="ibtn" id="showT" title="Mostra">${ic('eye', 16)}</button></div></div>
+    <div class="field"><label>Token di accesso</label><div class="input">${ic('key', 17)} <input id="lt" type="password" value="${esc(prefill?.token || '')}" placeholder="github_pat_…" autocapitalize="off"><button type="button" class="ibtn" id="showT" title="Mostra">${ic('eye', 16)}</button></div></div>
     <button class="btn primary" type="submit" id="lbtn">Accedi</button>
     ${err ? `<div class="lerr">${esc(err)}</div>` : ''}
     <details class="help"><summary>${ic('key', 15)}Come ottengo il token?</summary><ol>
@@ -991,13 +1036,21 @@ function renderLogin(err, prefill) {
       <li>In <b>Permissions</b> metti <b>Contents</b> e <b>Actions</b> su <b>Read and write</b>.</li>
       <li>Premi <b>Generate token</b>, copialo e incollalo qui. Fallo su ogni dispositivo una volta sola.</li></ol></details>
     <div class="or">oppure</div>
-    <button type="button" class="btn demo" id="demoBtn">${ic('play', 14)}Prova la demo senza account</button>
+    <button type="button" class="btn demo" id="viewBtn" style="margin-bottom:8px">${ic('eye', 15)}Entra solo per guardare (senza token)</button>
+    <button type="button" class="btn demo ghost" id="demoBtn">${ic('play', 14)}Prova la demo</button>
   </form></div>`;
   $('#showT').onclick = () => { const t = $('#lt'); t.type = t.type === 'password' ? 'text' : 'password'; };
   $('#demoBtn').onclick = () => { LS.set('mode', 'demo'); boot(); };
+  $('#viewBtn').onclick = async () => {
+    const auth = { owner: $('#lo').value.trim(), repo: $('#lr').value.trim() };
+    if (!auth.owner || !auth.repo) return renderLogin('Scrivi utente e repository.', auth);
+    try { await new ViewBackend(auth).verify(); LS.set('auth', auth); LS.set('mode', 'view'); boot(); }
+    catch (er) { renderLogin(er.message === 'Failed to fetch' ? 'Connessione non riuscita.' : er.message, auth); }
+  };
   $('#login').onsubmit = async e => {
     e.preventDefault();
     const auth = { owner: $('#lo').value.trim(), repo: $('#lr').value.trim(), token: $('#lt').value.trim() };
+    if (!auth.token) return renderLogin('Incolla il token, oppure entra solo per guardare.', auth);
     const b = $('#lbtn'); b.disabled = true; b.innerHTML = `<span class="dot busy"></span>Verifico…`;
     try {
       const be = new GitHubBackend(auth);
@@ -1018,12 +1071,14 @@ async function boot() {
   const mode = LS.get('mode'), auth = LS.get('auth');
   if (mode === 'demo') S.backend = new DemoBackend();
   else if (mode === 'github' && auth) { S.auth = auth; S.backend = new GitHubBackend(auth); }
+  else if (mode === 'view' && auth) { S.auth = auth; S.backend = new ViewBackend(auth); }
   else return renderLogin();
   loadingScreen();
   try {
     const d = await S.backend.load();
-    S.channels = d.channels; S.settings = withDefaults(d.settings); S.stats = d.stats || { channels: {} };
+    S.channels = d.channels; S.settings = withDefaults(S.backend.kind === 'view' ? { ...d.settings, ...LS.get('viewSettings', {}) } : d.settings); S.stats = d.stats || { channels: {} };
     if (!S.stats.channels) S.stats.channels = {};
+    await studioLoad(d.studio);
     reEnrich(); applySettings();
     shellKey = '';
     render();

@@ -169,9 +169,24 @@ def fetch_generic(ch, n, pool):
         list_url = base
     # TikTok: i video fissati in alto non sono i più recenti -> ne prendo di più
     extra = 3 if platform == "tiktok" else 0
-    info = list_entries(list_url, n + extra)
-    urls = [(u, platform == "tiktok") for u in (_entry_url(e, base) for e in info.get("entries") or []) if u]
+    # TikTok a volte risponde con una lista vuota ai server: riprovo qualche volta
+    tries = 4 if platform == "tiktok" else 1
+    urls, info, last_err = [], {}, None
+    for attempt in range(tries):
+        try:
+            info = list_entries(list_url, n + extra)
+            urls = [(u, platform == "tiktok") for u in (_entry_url(e, base) for e in info.get("entries") or []) if u]
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+        if urls:
+            break
+        time.sleep(4 * (attempt + 1))
     if not urls:
+        if last_err and platform != "tiktok":
+            raise last_err
+        if platform == "tiktok":
+            raise RuntimeError("TikTok non ha restituito video (succede ogni tanto con i server di GitHub). "
+                               "Riprova più tardi o premi Aggiorna dal programma per PC.")
         raise RuntimeError("Nessun video trovato (profilo privato o richiesta bloccata).")
     vids, infos = _full(urls, platform, n, pool)
     first = infos[0] if infos else {}

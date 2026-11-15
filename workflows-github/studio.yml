@@ -1,0 +1,41 @@
+name: Aggiorna YouTube Studio
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vyral-studio
+  cancel-in-progress: false
+
+jobs:
+  studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dipendenze
+        run: pip install cryptography
+      - name: Scarica statistiche di YouTube Studio
+        env:
+          VYRAL_STUDIO: ${{ secrets.VYRAL_STUDIO }}
+        run: python fetcher/vyral_studio.py data
+      - name: Salva nel repository (cifrato)
+        run: |
+          git config user.name "vyral-bot"
+          git config user.email "vyral-bot@users.noreply.github.com"
+          [ -f data/studio.enc.json ] || exit 0
+          git add data/studio.enc.json
+          git diff --cached --quiet && exit 0
+          git commit -m "YouTube Studio aggiornato [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && break
+            sleep 5
+          done
