@@ -239,6 +239,46 @@ def tiktok_item(url):
     }
 
 
+_TIKWM_LOCK = __import__("threading").Lock()
+_TIKWM_LAST = [0.0]
+
+
+def tikwm_posts(handle, n):
+    """Ultima strada per TikTok: il servizio pubblico TikWM (usato solo se TikTok risponde vuoto)."""
+    import urllib.parse
+    import urllib.request
+    h = handle.lstrip("@")
+    with _TIKWM_LOCK:  # massimo 1 richiesta al secondo
+        wait = 1.2 - (time.time() - _TIKWM_LAST[0])
+        if wait > 0:
+            time.sleep(wait)
+        _TIKWM_LAST[0] = time.time()
+        try:
+            req = urllib.request.Request("https://www.tikwm.com/api/user/posts?" + urllib.parse.urlencode(
+                {"unique_id": h, "count": max(n + 3, 10), "cursor": 0}), headers={"User-Agent": UA})
+            j = json.loads(urllib.request.urlopen(req, timeout=25).read())
+        except Exception:  # noqa: BLE001
+            return []
+    vids = []
+    for v in ((j or {}).get("data") or {}).get("videos") or []:
+        vid = str(v.get("video_id") or v.get("aweme_id") or "")
+        if not vid:
+            continue
+        cover = v.get("cover") or v.get("origin_cover") or v.get("ai_dynamic_cover")
+        if cover and cover.startswith("/"):
+            cover = "https://www.tikwm.com" + cover
+        vids.append({
+            "id": vid, "title": (v.get("title") or "").strip()[:200] or "(senza titolo)",
+            "url": f"https://www.tiktok.com/@{h}/video/{vid}", "thumbnail": cover,
+            "timestamp": int(v["create_time"]) if v.get("create_time") else None,
+            "duration": v.get("duration") or None, "views": v.get("play_count"), "likes": v.get("digg_count"),
+            "comments": v.get("comment_count"), "shares": v.get("share_count"), "saves": v.get("collect_count"),
+            "is_short": True,
+        })
+    vids.sort(key=lambda x: x["timestamp"] or 0, reverse=True)
+    return vids
+
+
 def _tiktok_embed_urls(handle):
     """Piano B per TikTok: il widget pubblico del profilo elenca gli ultimi video."""
     h = handle.lstrip("@")
@@ -280,6 +320,11 @@ def fetch_generic(ch, n, pool):
         time.sleep(4 * (attempt + 1))
     if not urls and platform == "tiktok":
         urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"])]
+    if not urls and platform == "tiktok":
+        tw = tikwm_posts(ch["handle"], n)
+        if tw:
+            meta = {"name": ch["handle"], "url": ch["url"], **tiktok_profile(ch["handle"])}
+            return meta, tw[:n]
     if not urls:
         if last_err and platform != "tiktok":
             raise last_err
@@ -293,6 +338,8 @@ def fetch_generic(ch, n, pool):
         extra_urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"]) if u not in [x for x, _ in urls]]
         if extra_urls:
             vids, infos = _full(extra_urls, platform, n, pool)
+    if not vids and platform == "tiktok":
+        vids = tikwm_posts(ch["handle"], n)[:n]
     if not vids:
         raise RuntimeError("Ho trovato i video ma TikTok non ha permesso di leggerli. Riprova più tardi o premi Aggiorna dal programma per PC."
                            if platform == "tiktok" else "Nessun video leggibile su questo canale.")
