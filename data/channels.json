@@ -1,1 +1,12 @@
-{"channels":[]}
+{
+  "channels": [
+    {
+      "id": "youtube:@grostymaps",
+      "platform": "youtube",
+      "handle": "@grostymaps",
+      "url": "https://www.youtube.com/@grostymaps",
+      "yt_tab": "both",
+      "added_at": 1794774146
+    }
+  ]
+}
