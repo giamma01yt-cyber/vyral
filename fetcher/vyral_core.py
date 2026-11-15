@@ -160,6 +160,28 @@ def fetch_youtube(ch, n, pool):
     }, vids
 
 
+def _tiktok_embed_urls(handle):
+    """Piano B per TikTok: il widget pubblico del profilo elenca gli ultimi video."""
+    import urllib.request
+    h = handle.lstrip("@")
+    ids = []
+    for url in (f"https://www.tiktok.com/embed/@{h}", f"https://www.tiktok.com/@{h}"):
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+                "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"})
+            html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore")
+        except Exception:  # noqa: BLE001
+            continue
+        found = re.findall(r'/video/(\d{15,21})', html) + re.findall(r'"(?:id|videoId|itemId)"\s*:\s*"(\d{17,21})"', html)
+        for i in found:
+            if i not in ids:
+                ids.append(i)
+        if ids:
+            break
+    return [f"https://www.tiktok.com/@{h}/video/{i}" for i in ids[:12]]
+
+
 def fetch_generic(ch, n, pool):
     platform = ch["platform"]
     base = ch["url"].rstrip("/")
@@ -181,6 +203,8 @@ def fetch_generic(ch, n, pool):
         if urls:
             break
         time.sleep(4 * (attempt + 1))
+    if not urls and platform == "tiktok":
+        urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"])]
     if not urls:
         if last_err and platform != "tiktok":
             raise last_err
