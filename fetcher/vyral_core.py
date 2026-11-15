@@ -130,12 +130,15 @@ def _entry_url(e, fallback_base=None):
 
 
 def _full(urls, platform, n, pool):
+    lg = getattr(_DBG, "log", None)
+
     def one(item):
         url, short = item
         try:
             return video_info(url), short
         except Exception as e:  # noqa: BLE001
-            dbg(f"yt-dlp video {url.rsplit('/', 1)[-1]}: ERRORE {clean_error(e)}")
+            if lg is not None and len(lg) < 40:
+                lg.append(f"yt-dlp video {url.rsplit('/', 1)[-1]}: {re.sub(r'\x1b\[[0-9;]*m', '', str(e))[:200]}")
             return None, short
     results = list(pool.map(one, urls))
     res = [(i, s) for i, s in results if i]
@@ -331,13 +334,17 @@ def fetch_generic(ch, n, pool):
             dbg(f"yt-dlp lista tentativo {attempt + 1}: {len(urls)} video")
         except Exception as e:  # noqa: BLE001
             last_err = e
-            dbg(f"yt-dlp lista tentativo {attempt + 1}: ERRORE {clean_error(e)}")
+            dbg(f"yt-dlp lista tentativo {attempt + 1}: ERRORE {re.sub(r'\x1b\[[0-9;]*m', '', str(e))[:200]}")
         if urls:
             break
         time.sleep(4 * (attempt + 1))
     if not urls and platform == "tiktok":
         urls = [(u, True) for u in _tiktok_embed_urls(ch["handle"])]
         dbg(f"widget profilo: {len(urls)} video")
+    if not urls and platform == "tiktok" and ch.get("_known_ids"):
+        h = ch["handle"].lstrip("@")
+        urls = [(f"https://www.tiktok.com/@{h}/video/{i}", True) for i in ch["_known_ids"][:12]]
+        dbg(f"uso {len(urls)} video trovati in un aggiornamento precedente")
     if not urls and platform == "tiktok":
         tw = tikwm_posts(ch["handle"], n)
         if tw:
@@ -358,6 +365,8 @@ def fetch_generic(ch, n, pool):
             vids, infos = _full(extra_urls, platform, n, pool)
     if not vids and platform == "tiktok":
         vids = tikwm_posts(ch["handle"], n)[:n]
+    if not vids and platform == "tiktok":
+        _DBG.ids = [u.rstrip("/").rsplit("/", 1)[-1] for u, _ in urls]
     if not vids:
         raise RuntimeError("Ho trovato i video ma TikTok non ha permesso di leggerli. Riprova più tardi o premi Aggiorna dal programma per PC."
                            if platform == "tiktok" else "Nessun video leggibile su questo canale.")
@@ -373,6 +382,7 @@ def fetch_generic(ch, n, pool):
         for k, v in prof.items():
             if v is not None and (k != "name" or not meta.get("name") or meta["name"] == ch["handle"]):
                 meta[k] = v
+        meta["_ids"] = [u.rstrip("/").rsplit("/", 1)[-1] for u, _ in urls]
     return meta, vids
 
 
@@ -404,11 +414,18 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
     def work(ch):
         t0 = time.time()
         _DBG.log = [] if ch["platform"] == "tiktok" else None
+        _DBG.ids = None
+        old_entry = prev.get(ch["id"]) or {}
+        if ch["platform"] == "tiktok":
+            ch = {**ch, "_known_ids": old_entry.get("known_ids") or [v["id"] for v in old_entry.get("videos") or []]}
         try:
             channel, videos = fetch_channel(ch, n, inner)
+            known = channel.pop("_ids", None)
             _merge_history(videos, prev.get(ch["id"]), now)
             log(f"  ok   {ch['id']}  ({len(videos)} video, {time.time() - t0:.1f}s)")
             entry = {"channel": channel, "videos": videos, "fetched_at": now}
+            if known:
+                entry["known_ids"] = known[:15]
             if _DBG.log:
                 entry["debug"] = _DBG.log
             return ch["id"], entry
@@ -417,8 +434,12 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
             log(f"  err  {ch['id']}  {msg}")
             old = prev.get(ch["id"])
             if old and old.get("videos"):
-                return ch["id"], {**old, "error": msg, "error_at": now, "debug": _DBG.log or None}
+                return ch["id"], {**old, "error": msg, "error_at": now, "debug": _DBG.log or None,
+                                  "known_ids": (_DBG.ids or old.get("known_ids") or [v["id"] for v in old["videos"]])[:15]}
             entry = {"error": msg, "error_at": now, "fetched_at": None}
+            ids = _DBG.ids or old_entry.get("known_ids")
+            if ids:
+                entry["known_ids"] = ids[:15]
             if _DBG.log:
                 entry["debug"] = _DBG.log
             if ch["platform"] == "tiktok":
