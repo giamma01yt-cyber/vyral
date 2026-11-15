@@ -23,6 +23,14 @@
       "url": "https://www.youtube.com/@meowuefn",
       "yt_tab": "both",
       "added_at": 1794774172
+    },
+    {
+      "id": "youtube:@bryzee6",
+      "platform": "youtube",
+      "handle": "@bryzee6",
+      "url": "https://www.youtube.com/@bryzee6",
+      "yt_tab": "both",
+      "added_at": 1794774182
     }
   ]
 }
