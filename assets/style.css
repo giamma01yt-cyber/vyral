@@ -536,6 +536,38 @@ tr:hover .tvid img { transform: scale(1.06); }
 .lang-mini button { height: 28px; padding: 0 10px; font-size: 12px; }
 @media (max-width: 860px) { .pin-flag { right: auto; left: 74px; top: 6px; } }
 
+/* ---------------- TUTTI I VIDEO DEL CANALE ---------------- */
+.allvids { display: flex; align-items: center; gap: 8px; width: calc(100% - 2 * var(--pad)); margin: 4px var(--pad) 8px; padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--line2); background: rgba(255, 255, 255, .03); font-weight: 600; font-size: 13px; color: var(--txt); transition: .25s var(--ease); }
+.allvids svg:first-child { color: var(--c1); }
+.allvids svg:last-child { margin-left: auto; transition: transform .3s var(--spring); }
+.allvids b { background: color-mix(in srgb, var(--c1) 20%, transparent); color: var(--c1); padding: 1px 7px; border-radius: 99px; font-size: 11.5px; }
+.allvids:hover { border-color: color-mix(in srgb, var(--c1) 50%, transparent); background: color-mix(in srgb, var(--c1) 8%, transparent); }
+.allvids:hover svg:last-child { transform: translate(3px, -3px); }
+.pbanner .row1 .ibtn svg { transform: rotate(-135deg); }
+.vgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.vgrid.shorts { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.vcard { overflow: hidden; display: flex; flex-direction: column; transition: transform .35s var(--spring), box-shadow .35s; animation: rise .6s var(--ease) both; animation-delay: calc(var(--i) * 35ms + 120ms); }
+.vcard:hover { transform: translateY(-5px); box-shadow: 0 22px 50px -24px var(--p1); }
+.vthumb { position: relative; aspect-ratio: 16 / 9; background: rgba(255, 255, 255, .04); overflow: hidden; }
+.vcard.v .vthumb { aspect-ratio: 9 / 13; }
+.vthumb img, .vthumb .noimg { width: 100%; height: 100%; object-fit: cover; transition: transform .6s var(--ease), filter .4s; }
+.vcard:hover .vthumb img { transform: scale(1.07); filter: brightness(.75); }
+.vthumb .play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; opacity: 0; transform: scale(.6); transition: .35s var(--spring); }
+.vcard:hover .vthumb .play { opacity: 1; transform: scale(1); }
+.vthumb .d { position: absolute; right: 7px; bottom: 7px; background: rgba(0, 0, 0, .75); font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
+.vthumb .hotb { position: absolute; left: 7px; top: 7px; background: rgba(0, 0, 0, .7); color: var(--warn); font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 6px; backdrop-filter: blur(6px); }
+.vinfo { padding: 12px 13px 14px; display: flex; flex-direction: column; gap: 4px; }
+.vt2 { font-weight: 600; font-size: 13.5px; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vinfo .chips { margin-top: 6px; }
+@media (max-width: 860px) { .vgrid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .vgrid.shorts { grid-template-columns: repeat(2, 1fr); } .vinfo { padding: 10px; } .vinfo .chip { font-size: 11px; padding: 2px 6px; } }
+
+.ch-link { color: inherit; display: block; }
+a.ch-name { transition: color .2s; }
+a.ch-name:hover { color: color-mix(in srgb, var(--c1) 55%, #fff); }
+a.ch-link .avatar { transition: transform .3s var(--spring); }
+a.ch-link:hover .avatar { transform: scale(1.06); }
+
 /* solo visione */
 body.ro .addrow, body.ro .ch-actions .danger, body.ro #refreshBtn, body.ro [data-act="refresh"], body.ro [data-act="rm-social"], body.ro [data-act="reset-settings"], body.ro label.btn:has(#importFile) { display: none !important; }
 

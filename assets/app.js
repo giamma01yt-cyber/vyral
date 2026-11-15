@@ -174,7 +174,7 @@ const DEFAULT_SETTINGS = {
   name: '', theme: 'aurora', bg: 'aurora', oled: false, glow: true, animations: true, density: 'comfy', radius: 20,
   videos_per_channel: 3, hot_threshold: 1.3, yt_tab: 'both',
   metrics: Object.fromEntries(Object.keys(METRICS).map(k => [k, true])),
-  platforms: ['youtube', 'tiktok'], auto_reload: 5, pinned: [], lang: '',
+  platforms: ['youtube', 'tiktok'], auto_reload: 5, pinned: [], lang: '', catalog_size: 30,
 };
 const withDefaults = s => ({ ...DEFAULT_SETTINGS, ...(s || {}), metrics: { ...DEFAULT_SETTINGS.metrics, ...(s?.metrics || {}) } });
 
@@ -337,7 +337,18 @@ class DemoBackend {
       }
       out[ch.id] = { channel: { name: ch.handle.replace('@', '').replace(/([a-z])([A-Z])/g, '$1 $2'), followers: Math.round(base * (2 + rnd() * 12)), avatar: null, url: ch.url }, videos, fetched_at: now };
     }
-    return { updated_at: now, source: 'demo', channels: out };
+    const catalog = {};
+    for (const ch of channels) {
+      const base = out[ch.id].videos[0]?.views || 5000, vert = ch.platform !== 'youtube';
+      const titles = ['Ho provato la mappa 1v1 più difficile', 'Red vs Blue ma ogni kill vale doppio', 'Il mio livello sale troppo velocemente', 'Nuovo update della mappa!', 'Box fight 1v1 contro un pro', 'Livello 200 in un giorno', 'La mappa più giocata', 'Reazione al nuovo aggiornamento', 'XP glitch ancora funzionante', 'Pirate Shop Access gratis'];
+      const extra = Array.from({ length: Math.max(0, settings.catalog_size - 3) }, (_, i) => {
+        const v = Math.round(base * (0.15 + ((i * 37) % 100) / 60));
+        return { id: 'c' + hash(ch.id + i), title: titles[i % titles.length] + (i > 9 ? ' #' + i : ''), url: ch.url, thumbnail: `https://picsum.photos/seed/c${hash(ch.id + i)}/${vert ? '360/640' : '640/360'}`,
+          timestamp: now - (i + 3) * 86400 * 2, duration: vert ? 20 + i : 300 + i * 10, views: v, likes: ch.platform === 'youtube' && i % 2 ? null : Math.round(v * .06), comments: Math.round(v * .004), is_short: vert };
+      });
+      catalog[ch.id] = { updated_at: now, videos: [...out[ch.id].videos.map(({ history, ...x }) => x), ...extra] };
+    }
+    return { updated_at: now, source: 'demo', channels: out, catalog };
   }
 }
 
@@ -512,11 +523,12 @@ function parseRoute() {
   if (h[0] === 'p' && PLATFORMS[h[1]]) return { name: 'platform', p: h[1], tab: h[2] === 'tutti' ? 'all' : 'channels' };
   if (h[0] === 'tutti') return { name: 'all' };
   if (h[0] === 'studio') return { name: 'studio' };
+  if (h[0] === 'c' && h[1]) return { name: 'channel', id: decodeURIComponent(h[1]) };
   if (h[0] === 'impostazioni') return { name: 'settings' };
   return { name: 'home' };
 }
 const go = hash => { if (location.hash === hash) render(); else location.hash = hash; };
-window.addEventListener('hashchange', () => { S.route = parseRoute(); S.q = ''; S.filterCh = 'all'; render(); window.scrollTo({ top: 0, behavior: S.settings.animations ? 'smooth' : 'auto' }); });
+window.addEventListener('hashchange', () => { S.route = parseRoute(); S.q = ''; S.filterCh = 'all'; CH.q = ''; render(); window.scrollTo({ top: 0, behavior: S.settings.animations ? 'smooth' : 'auto' }); });
 
 /* ============================================================
    SHELL (sidebar + topbar + bottom nav)
@@ -595,14 +607,14 @@ let shellKey = '';
 function render() {
   S.route = parseRoute();
   const r = S.route;
-  setPageColor(r.name === 'platform' ? r.p : r.name === 'studio' ? 'youtube' : null);
+  setPageColor(r.name === 'platform' ? r.p : r.name === 'studio' ? 'youtube' : r.name === 'channel' ? S.channels.find(c => c.id === r.id)?.platform : null);
   const key = JSON.stringify([r, S.settings.platforms, S.channels.length, S.settings.name]);
   if (key !== shellKey || !$('#view')) { renderShell(); shellKey = key; }
   const v = $('#view');
   v.className = '';
   void v.offsetWidth;
   v.className = 'view';
-  const t = { home: ['Home', viewHome], all: ['Tutti i video', viewAll], settings: ['Impostazioni', viewSettings], platform: [PLATFORMS[r.p]?.name, viewPlatform], studio: ['YouTube Studio', viewStudio] }[r.name];
+  const t = { home: ['Home', viewHome], all: ['Tutti i video', viewAll], settings: ['Impostazioni', viewSettings], platform: [PLATFORMS[r.p]?.name, viewPlatform], studio: ['YouTube Studio', viewStudio], channel: [entryOf(r.id)?.channel?.name || S.channels.find(c => c.id === r.id)?.handle || 'Canale', viewChannel] }[r.name];
   $('#pageTitle').textContent = t[0];
   document.title = t[0] + ' · Vyral';
   t[1](v);
@@ -615,7 +627,7 @@ function rerenderView() {
   const v = $('#view'); if (!v) return render();
   const y = window.scrollY;
   const r = S.route;
-  ({ home: viewHome, all: viewAll, settings: viewSettings, platform: viewPlatform, studio: viewStudio })[r.name](v, true);
+  ({ home: viewHome, all: viewAll, settings: viewSettings, platform: viewPlatform, studio: viewStudio, channel: viewChannel })[r.name](v, true);
   countUp(v); initSegs(v);
   $$('.cmp-row .bar i', v).forEach(i => i.style.width = i.dataset.w);
   window.scrollTo(0, y);
@@ -674,7 +686,7 @@ function viewHome(v) {
     <div>
       <div class="sec-title rise" style="--i:11"><h3><span style="color:var(--a1)">${ic('chart', 20)}</span>Confronto canali</h3><span class="mut" style="font-size:12px">media views</span></div>
       <div class="glass cmp rise" style="--i:12">${cmp.length ? cmp.map(({ c, e }) => `
-        <div class="cmp-row" style="${pVars(c.platform)}"><div class="top"><span><span style="color:var(--c1)">${pIcon(c.platform, 14)}</span>${esc(e.channel?.name || c.handle)}</span><b>${fmt(e.agg.avgViews)}</b></div>
+        <div class="cmp-row" style="${pVars(c.platform)};cursor:pointer" data-go="#/c/${encodeURIComponent(c.id)}"><div class="top"><span><span style="color:var(--c1)">${pIcon(c.platform, 14)}</span>${esc(e.channel?.name || c.handle)}</span><b>${fmt(e.agg.avgViews)}</b></div>
         <div class="bar"><i data-w="${(e.agg.avgViews / maxAvg * 100).toFixed(1)}%"></i></div></div>`).join('') : '<p class="mut">Ancora nessun dato.</p>'}</div>
     </div>
   </div>`;
@@ -686,7 +698,7 @@ function pinnedSection() {
   return `<div class="sec-title rise" style="--i:5"><h3><span style="color:var(--a1)">${ic('pin', 19)}</span>Canali fissati</h3></div>
   <div class="pgrid">${pins.map((ch, i) => {
     const d = entryOf(ch.id), pl = PLATFORMS[ch.platform], last = d?.videos?.[0], a = d?.agg || {};
-    return `<div class="pcard glass glow-card rise" style="--i:${i + 6};${pVars(ch.platform)};--p1:${pl.c1}" data-go="#/p/${ch.platform}">
+    return `<div class="pcard glass glow-card rise" style="--i:${i + 6};${pVars(ch.platform)};--p1:${pl.c1}" data-go="#/c/${encodeURIComponent(ch.id)}">
       <div class="pc-top">${avatar(ch, d)}<div style="min-width:0;flex:1"><div class="ch-name">${esc(d?.channel?.name || ch.handle)}</div>
         <div class="ch-sub"><span class="plat-tag">${pIcon(ch.platform, 11)}${pl.name}</span>${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>` : ''}</div></div></div>
       <div class="pc-stats"><div><b>${cnt(a.avgViews)}</b><small>Media views</small></div><div><b>${cnt(a.avgER, 'p')}</b><small>Engagement</small></div><div><b>${cnt(a.avgVph)}</b><small>Views/ora</small></div></div>
@@ -746,14 +758,15 @@ function channelCard(ch, i) {
       <div><div class="l">Views/ora</div><div class="v">${cnt(a.avgVph)}</div></div></div>
       ${d.error ? `<div class="err-box soft">Ultimo aggiornamento fallito (${esc(d.error)}): mostro i dati precedenti.</div>` : ''}
       <div class="vlist">${d.videos.map((x, k) => videoRow(x, k, m)).join('') || '<p class="mut" style="padding:14px">Nessun video.</p>'}</div>
+      <button class="allvids" data-go="#/c/${encodeURIComponent(ch.id)}">${ic('grid', 15)}Tutti i video del canale${S.stats.catalog?.[ch.id]?.videos?.length ? ` <b>${S.stats.catalog[ch.id].videos.length}</b>` : ''}${ic('arrow', 14)}</button>
       <div class="card-foot"><span>Aggiornato ${ago(d.fetched_at)}</span>${d.needs_login ? `<span class="badge low" title="TikTok mostra questi video solo con l'accesso: li aggiorna il programma per PC">${ic('pc', 11)}dal PC</span>` : `<span>${d.videos.length} video</span>`}</div>`;
   }
   const pinned = isPinned(ch.id);
   return `<article class="ccard glass glow-card rise ${pinned ? 'pinned' : ''}" style="--i:${i + 1};${pVars(ch.platform)};--p1:${pl.c1}">
     ${pinned ? `<span class="pin-flag">${ic('pin', 12, 2.4)}Fissato</span>` : ''}
     <div class="stripe"></div>
-    <div class="ch-head">${avatar(ch, d)}
-      <div class="ch-info"><div class="ch-name">${esc(d?.channel?.name || ch.handle)}</div>
+    <div class="ch-head"><a class="ch-link" href="#/c/${encodeURIComponent(ch.id)}" title="Apri il canale">${avatar(ch, d)}</a>
+      <div class="ch-info"><a class="ch-name ch-link" href="#/c/${encodeURIComponent(ch.id)}">${esc(d?.channel?.name || ch.handle)}</a>
         <div class="ch-sub">${d?.channel?.followers != null ? `<span><b>${fmt(d.channel.followers)}</b> ${pl.follow}</span>·` : ''}${d?.channel?.likes != null ? `<span><b>${fmt(d.channel.likes)}</b> like</span>·` : ''}<span>${esc(ch.handle)}</span>${tab ? `<span>· ${tab}</span>` : ''}</div></div>
       <div class="ch-actions">
         <button class="ibtn pin-btn ${pinned ? 'on' : ''}" data-act="pin" data-id="${esc(ch.id)}" title="${pinned ? 'Togli dai fissati' : 'Fissa in alto'}">${ic('pin', 17)}</button>
@@ -790,6 +803,59 @@ function studioChips(x, m) {
     + c('chart', sv.averageViewPercentage != null ? Math.round(sv.averageViewPercentage) + '% visto' : null, 'Percentuale media visualizzata (YouTube Studio)')
     + c('grid', sv.videoThumbnailImpressionsClickRate != null ? 'CTR ' + ctrP(sv.videoThumbnailImpressionsClickRate).toFixed(1).replace('.', ',') + '%' : null, 'CTR delle impression (YouTube Studio)')
     + c('users', sv.subscribersGained ? '+' + fmt(sv.subscribersGained) + ' iscritti' : null, 'Iscritti ottenuti con questo video (YouTube Studio)');
+}
+
+/* ---------------- PAGINA CANALE: tutti i video ---------------- */
+const CH = { sort: 'recent', q: '', mode: 'grid' };
+function viewChannel(v) {
+  const id = S.route.id, ch = S.channels.find(c => c.id === id);
+  if (!ch) { v.innerHTML = `<div class="glass empty rise"><h2>Canale non trovato</h2><p><a class="btn" href="#/">Torna alla Home</a></p></div>`; return; }
+  const d = entryOf(id), pl = PLATFORMS[ch.platform], cat = S.stats.catalog?.[id];
+  let vids = (cat?.videos || d?.videos || []).map(x => ({ ...x }));
+  const vw = vids.filter(x => x.views != null), avg = vw.length ? vw.reduce((a, x) => a + x.views, 0) / vw.length : null;
+  const now = Date.now() / 1000;
+  vids.forEach(x => {
+    x.er = x.views ? ((x.likes || 0) + (x.comments || 0) + (x.shares || 0) + (x.saves || 0)) / x.views : null;
+    x.perf = avg && x.views != null ? x.views / avg : null;
+    x.vph = x.views != null && x.timestamp ? x.views / Math.max((now - x.timestamp) / 3600, 1) : null;
+  });
+  const total = vw.reduce((a, x) => a + x.views, 0), likes = vids.reduce((a, x) => a + (x.likes || 0), 0);
+  const best = [...vw].sort((a, b) => b.views - a.views)[0];
+  let list = CH.q ? vids.filter(x => x.title.toLowerCase().includes(CH.q.toLowerCase())) : vids;
+  const key = { recent: 'timestamp', views: 'views', likes: 'likes', er: 'er' }[CH.sort];
+  list = [...list].sort((a, b) => (b[key] ?? -1) - (a[key] ?? -1));
+  const shorts = vids.filter(x => x.is_short).length > vids.length / 2;
+  const hasLikes = vids.some(x => x.likes != null);
+  const card = (x, i) => `<a class="vcard glass glow-card ${shorts ? 'v' : ''}" href="${esc(x.url)}" target="_blank" rel="noopener" style="--i:${Math.min(i, 24)}">
+      <div class="vthumb">${imgTag(x.thumbnail)}<span class="play">${ic('play', 30)}</span>${x.duration ? `<span class="d">${dur(x.duration)}</span>` : ''}${x.perf != null && x.perf >= S.settings.hot_threshold ? `<span class="hotb">🔥 ${x.perf.toFixed(1)}×</span>` : ''}</div>
+      <div class="vinfo"><div class="vt2">${esc(x.title)}</div>
+        <div class="vm">${x.timestamp ? ago(x.timestamp) : ''}</div>
+        <div class="chips">${x.views != null ? `<span class="chip">${ic('eye', 13)}${fmt(x.views)}</span>` : ''}${x.likes != null ? `<span class="chip">${ic('heart', 13)}${fmt(x.likes)}</span>` : ''}${x.comments != null ? `<span class="chip">${ic('msg', 13)}${fmt(x.comments)}</span>` : ''}${x.er != null && x.likes != null ? `<span class="chip er">${ic('bolt', 13)}${pct(x.er)}</span>` : ''}</div></div></a>`;
+  v.innerHTML = `
+  <div class="pbanner glass rise" style="--i:0;${pVars(ch.platform)}"><div class="glowbg"></div>
+    <div class="row1">
+      <a class="ibtn" href="#/p/${ch.platform}" title="Indietro">${ic('arrow', 18)}</a>
+      <div style="${pVars(ch.platform)}">${avatar(ch, d)}</div>
+      <div style="min-width:0"><h2>${esc(d?.channel?.name || ch.handle)}</h2>
+        <div class="sub"><span class="plat-tag" style="${pVars(ch.platform)}">${pIcon(ch.platform, 11)}${pl.name}</span> ${d?.channel?.followers != null ? `<b>${fmt(d.channel.followers)}</b> ${pl.follow} · ` : ''}${esc(ch.handle)}</div></div>
+      <a class="btn sm" style="margin-left:auto" href="${esc(d?.channel?.url || ch.url)}" target="_blank" rel="noopener">${ic('ext', 15)}Apri canale</a>
+    </div></div>
+  <div class="sum">
+    ${[['Video nell\'archivio', cnt(vids.length), cat ? 'aggiornato ' + ago(cat.updated_at) : 'in attesa dell\'archivio'],
+    ['Views totali', cnt(total), full(total)],
+    ['Media views', cnt(avg), 'per video'],
+    [hasLikes ? 'Like totali' : 'Più visto', hasLikes ? cnt(likes) : cnt(best?.views), hasLikes ? pct(total ? likes / total : null) + ' delle views' : esc(best?.title || '—')]]
+      .map(([l, val, h], i) => `<div class="s glass rise" style="--i:${i + 1}"><div class="l">${l}</div><div class="v">${val}</div><div class="h">${h}</div></div>`).join('')}
+  </div>
+  <div class="toolbar rise" style="--i:6">
+    <label class="input">${ic('search', 17)}<input id="cq" placeholder="Cerca tra i video del canale…" value="${esc(CH.q)}"></label>
+    <div class="seg" id="csort">${[['recent', 'Più recenti'], ['views', 'Più visti']].concat(hasLikes ? [['likes', 'Più like'], ['er', 'Engagement']] : []).map(([k, l]) => `<button data-s="${k}" class="${CH.sort === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  </div>
+  ${list.length ? `<div class="vgrid ${shorts ? 'shorts' : ''}">${list.map(card).join('')}</div>`
+      : `<div class="glass empty rise"><h2>${vids.length ? 'Nessun risultato' : 'Archivio in preparazione'}</h2><p>${vids.length ? 'Prova un\'altra ricerca.' : `Al prossimo aggiornamento Vyral raccoglie fino a ${S.settings.catalog_size} video di questo canale.`}</p></div>`}`;
+  const q = $('#cq', v);
+  q.oninput = () => { CH.q = q.value; const pos = q.selectionStart; viewChannel(v); initSegs(v); countUp(v); const n = $('#cq', v); n.focus(); n.setSelectionRange(pos, pos); };
+  $$('#csort button', v).forEach(b => b.onclick = () => { CH.sort = b.dataset.s; viewChannel(v); initSegs(v); countUp(v); });
 }
 
 /* ---------------- TABELLA (Visualizza tutti) ---------------- */
@@ -874,6 +940,7 @@ function viewSettings(v, keep) {
     row('Arrotondamento', 'Quanto sono tondi gli angoli.', range('radius', 6, 30, 1, x => x + 'px')), 1)}
   ${sec('statistiche', 'chart', 'Statistiche',
     row('Video per canale', 'Quanti video recenti analizzare. Vale dal prossimo aggiornamento.', range('videos_per_channel', 1, 10, 1, x => x)) +
+    row('Archivio video per canale', 'Quanti video tenere nella pagina "Tutti i video del canale". Si aggiorna ogni 6 ore.', range('catalog_size', 10, 60, 5, x => x)) +
     row('Soglia 🔥', 'Un video è "in fiamme" se supera la media del canale di questo fattore.', range('hot_threshold', 1.1, 3, .1, x => (+x).toFixed(1) + '×')) +
     row('YouTube: video da contare', 'Scelta predefinita quando aggiungi un canale.', segm('yt_tab', [['both', 'Tutti'], ['videos', 'Video'], ['shorts', 'Shorts']])) +
     `<div class="set-row" style="display:block"><div class="t" style="margin-bottom:12px"><b>Statistiche visibili</b><small>Scegli cosa mostrare sotto ogni video.</small></div><div class="mchips">${Object.entries(METRICS).map(([k, [l, i]]) => `<button class="mchip ${s.metrics[k] ? 'on' : ''}" data-metric="${k}">${ic(i, 14)}${l}</button>`).join('')}</div></div>`, 2)}

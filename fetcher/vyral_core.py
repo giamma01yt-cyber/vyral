@@ -452,6 +452,69 @@ def fetch_channel(ch, n, pool):
     return fetch_generic(ch, n, pool)
 
 
+# ----------------------------------------------------------------- archivio (tutti i video del canale)
+CATALOG_TTL = 6 * 3600
+
+
+def _flat_video(e, platform, short=False):
+    thumbs = e.get("thumbnails") or []
+    thumb = e.get("thumbnail") or (thumbs[-1].get("url") if thumbs else None)
+    title = (e.get("title") or "").strip()
+    if platform == "tiktok":
+        title = (e.get("description") or title).strip()
+        short = True
+    vid = str(e.get("id") or "")
+    url = e.get("webpage_url") or e.get("url")
+    if platform == "youtube" and vid:
+        url = f"https://www.youtube.com/{'shorts/' if short else 'watch?v='}{vid}"
+    return {"id": vid, "title": title[:200] or "(senza titolo)", "url": url, "thumbnail": thumb,
+            "timestamp": _ts(e), "duration": e.get("duration"), "views": e.get("view_count"),
+            "likes": e.get("like_count"), "comments": e.get("comment_count"), "shares": e.get("repost_count"),
+            "saves": e.get("save_count"), "is_short": bool(short)}
+
+
+def catalog_channel(ch, n, pool, known_ids=None):
+    """Fino a n video del canale con le statistiche disponibili senza aprirli uno per uno (YouTube)."""
+    platform = ch["platform"]
+    out = []
+    if platform == "youtube":
+        tabs = {"videos": ["videos"], "shorts": ["shorts"]}.get(ch.get("yt_tab"), ["videos", "shorts"])
+        for tab in tabs:
+            try:
+                info = _run(f"{ch['url']}/{tab}", {"extract_flat": "in_playlist", "playlistend": n,
+                                                   "extractor_args": {"youtubetab": {"approximate_date": ["timestamp"]}}})
+            except Exception:  # noqa: BLE001
+                continue
+            out += [_flat_video(e, "youtube", tab == "shorts") for e in info.get("entries") or [] if e.get("id")]
+    elif platform == "tiktok":
+        entries = []
+        try:
+            entries = list_entries(ch["url"], n + 3).get("entries") or []
+        except Exception:  # noqa: BLE001
+            pass
+        flat = [_flat_video(e, "tiktok") for e in entries if e.get("id")]
+        if flat and any(v["views"] is not None for v in flat):
+            out = flat
+        else:
+            h = ch["handle"].lstrip("@")
+            ids = [v["id"] for v in flat] or [u.rstrip("/").rsplit("/", 1)[-1] for u in _tiktok_embed_urls(ch["handle"])] or list(known_ids or [])
+            urls = [(f"https://www.tiktok.com/@{h}/video/{i}", True) for i in ids[:n]]
+            if urls:
+                out, _ = _full(urls, "tiktok", n, pool)
+    else:
+        try:
+            info = list_entries(ch.get("list_url") or LIST_URL.get(platform, "{h}").format(h=ch["handle"].lstrip("@")), n)
+            out = [_flat_video(e, platform) for e in info.get("entries") or [] if e.get("id")]
+        except Exception:  # noqa: BLE001
+            pass
+    seen, uniq = set(), []
+    for v in out:
+        if v["id"] and v["id"] not in seen:
+            seen.add(v["id"]); uniq.append(v)
+    uniq.sort(key=lambda v: v["timestamp"] or 0, reverse=True)
+    return uniq[:n]
+
+
 def _merge_history(videos, prev_entry, now):
     old = {v["id"]: v for v in (prev_entry or {}).get("videos", [])}
     for v in videos:
@@ -522,6 +585,42 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
     with ThreadPoolExecutor(max_workers=3) as outer:
         for cid, entry in outer.map(work, channels):
             out[cid] = entry
+
+    # archivio di tutti i video (aggiornato ogni 6 ore per canale)
+    cat_n = max(5, min(int(settings.get("catalog_size", 30)), 60))
+    prev_cat = (prev_stats or {}).get("catalog", {})
+    catalog = {}
+
+    def cat_work(ch):
+        cid = ch["id"]
+        old = prev_cat.get(cid)
+        fresh = old and now - old.get("updated_at", 0) < CATALOG_TTL and len(old.get("videos") or []) >= min(cat_n, 5)
+        skip_tt = ch["platform"] == "tiktok" and source == "pc" and not TIKTOK_COOKIES
+        if fresh or skip_tt:
+            return cid, old
+        _DBG.log = None
+        try:
+            vids = catalog_channel(ch, cat_n, inner, (out.get(cid) or {}).get("known_ids"))
+        except Exception:  # noqa: BLE001
+            vids = []
+        if not vids:
+            return cid, old
+        return cid, {"updated_at": now, "videos": vids}
+
+    with ThreadPoolExecutor(max_workers=3) as outer:
+        for cid, entry in outer.map(cat_work, channels):
+            if entry:
+                catalog[cid] = entry
+    # i video più recenti (con più statistiche) aggiornano l'archivio
+    for cid, entry in catalog.items():
+        recent = {v["id"]: v for v in (out.get(cid) or {}).get("videos") or []}
+        if recent:
+            merged = [{**v, **{k: x for k, x in recent[v["id"]].items() if x is not None and k != "history"}} if v["id"] in recent else v
+                      for v in entry["videos"]]
+            ids = {v["id"] for v in merged}
+            merged += [{k: x for k, x in v.items() if k != "history"} for v in recent.values() if v["id"] not in ids]
+            merged.sort(key=lambda v: v.get("timestamp") or 0, reverse=True)
+            entry["videos"] = merged[:cat_n]
     inner.shutdown()
     import yt_dlp as _y
     try:
@@ -529,7 +628,8 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
         imp = True
     except ImportError:
         imp = False
-    return {"updated_at": now, "source": source, "channels": out, "yt_dlp": _y.version.__version__, "impersonate": imp}
+    return {"updated_at": now, "source": source, "channels": out, "catalog": catalog,
+            "yt_dlp": _y.version.__version__, "impersonate": imp}
 
 
 # ----------------------------------------------------------------- CLI

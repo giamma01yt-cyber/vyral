@@ -25,6 +25,11 @@ const EN = {
   "Vyral non userà più il tuo accesso TikTok su questo PC.": 'Vyral will no longer use your TikTok login on this PC.', 'TikTok collegato: aggiorno i dati…': 'TikTok connected: updating data…',
   "TikTok mostra questi video solo a chi ha fatto l'accesso: collega il tuo account TikTok in Vyral.exe (Impostazioni → Social).": 'TikTok only shows these videos to signed-in users: connect your TikTok account in Vyral.exe (Settings → Social).',
   "Il collegamento a TikTok si fa dal programma per PC (Vyral.exe).": 'Connecting TikTok is done from the PC app (Vyral.exe).',
+  'Tutti i video del canale': 'All channel videos', "Video nell'archivio": 'Videos in archive', 'Più recenti': 'Newest', 'Più like': 'Most liked',
+  'Cerca tra i video del canale…': "Search this channel's videos…", 'Archivio in preparazione': 'Archive being prepared', 'Nessun risultato': 'No results',
+  "Prova un'altra ricerca.": 'Try another search.', 'Archivio video per canale': 'Video archive per channel', 'Canale non trovato': 'Channel not found', 'Torna alla Home': 'Back to Home',
+  'Quanti video tenere nella pagina "Tutti i video del canale". Si aggiorna ogni 6 ore.': 'How many videos to keep on the "All channel videos" page. Updated every 6 hours.',
+  "in attesa dell'archivio": 'waiting for archive', 'per video': 'per video', 'Indietro': 'Back', 'Canale': 'Channel',
   'nelle ultime 24h': 'in the last 24h', 'like': 'likes', 'Salvataggio…': 'Saving…', 'Sincronizzato': 'Synced', 'adesso': 'just now',
   // home
   'Ecco come stanno andando i tuoi canali.': 'Here is how your channels are doing.',
@@ -166,7 +171,8 @@ const PAT = [
   [/^YouTube Studio fornisce i dati con 1–3 giorni di ritardo · aggiornati (.+)$/, (m, a) => `YouTube Studio provides data with a 1–3 day delay · updated ${tr(a)}`],
   [/^Alcuni report non sono disponibili: (.+)$/, (m, a) => `Some reports are not available: ${a}`],
   [/^Ultimo aggiornamento fallito \((.+)\): mostro i dati precedenti\.$/, (m, a) => `Last update failed (${tr(a)}): showing previous data.`],
-  [/^(\d+) canali$/, (m, a) => `${a} channels`], [/^(\d+) video$/, (m, a) => `${a} videos`],
+  [/^(\d+) canali$/, (m, a) => `${a} channels`], [/^aggiornato (.+)$/, (m, a) => 'updated ' + tr(a)],
+  [/^Al prossimo aggiornamento Vyral raccoglie fino a (\d+) video di questo canale\.$/, (m, a) => `On the next update Vyral will collect up to ${a} videos from this channel.`], [/^(\d+) video$/, (m, a) => `${a} videos`],
   [/^(.+ · .+)$/, m => m.split(' · ').map(x => tr(x)).join(' · ')],
 ];
 
