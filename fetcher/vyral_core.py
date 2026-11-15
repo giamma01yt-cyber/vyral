@@ -160,17 +160,54 @@ def fetch_youtube(ch, n, pool):
     }, vids
 
 
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+
+
+def _get_html(url):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"})
+    return urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore")
+
+
+def tiktok_profile(handle):
+    """Foto profilo, nome, follower, like totali e numero di video dalla pagina pubblica del profilo."""
+    h = handle.lstrip("@")
+    out = {}
+    try:
+        html = _get_html(f"https://www.tiktok.com/@{h}")
+    except Exception:  # noqa: BLE001
+        return out
+    m = re.search(r'<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html, re.S)
+    if m:
+        try:
+            ui = json.loads(m.group(1))["__DEFAULT_SCOPE__"]["webapp.user-detail"]["userInfo"]
+            u, st = ui.get("user", {}), ui.get("statsV2") or ui.get("stats") or {}
+            out = {"avatar": u.get("avatarLarger") or u.get("avatarMedium"), "name": u.get("nickname"),
+                   "followers": int(st["followerCount"]) if st.get("followerCount") is not None else None,
+                   "likes": int(st["heartCount"]) if st.get("heartCount") is not None else None,
+                   "video_count": int(st["videoCount"]) if st.get("videoCount") is not None else None}
+        except Exception:  # noqa: BLE001
+            out = {}
+    if not out.get("avatar"):
+        a = re.search(r'"avatarLarger"\s*:\s*"([^"]+)"', html)
+        if a:
+            out["avatar"] = a.group(1).encode().decode("unicode_escape")
+    if out.get("followers") is None:
+        f = re.search(r'"followerCount"\s*:\s*"?(\d+)', html)
+        if f:
+            out["followers"] = int(f.group(1))
+    if out.get("avatar"):
+        out["avatar"] = out["avatar"].replace("\\u002F", "/")
+    return {k: v for k, v in out.items() if v not in (None, "")}
+
+
 def _tiktok_embed_urls(handle):
     """Piano B per TikTok: il widget pubblico del profilo elenca gli ultimi video."""
-    import urllib.request
     h = handle.lstrip("@")
     ids = []
     for url in (f"https://www.tiktok.com/embed/@{h}", f"https://www.tiktok.com/@{h}"):
         try:
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-                "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"})
-            html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore")
+            html = _get_html(url)
         except Exception:  # noqa: BLE001
             continue
         found = re.findall(r'/video/(\d{15,21})', html) + re.findall(r'"(?:id|videoId|itemId)"\s*:\s*"(\d{17,21})"', html)
@@ -214,12 +251,18 @@ def fetch_generic(ch, n, pool):
         raise RuntimeError("Nessun video trovato (profilo privato o richiesta bloccata).")
     vids, infos = _full(urls, platform, n, pool)
     first = infos[0] if infos else {}
-    return {
+    meta = {
         "name": first.get("channel") or first.get("uploader") or info.get("uploader") or info.get("title") or ch["handle"],
         "followers": first.get("channel_follower_count") or info.get("channel_follower_count"),
         "avatar": _avatar(info),
         "url": ch["url"],
-    }, vids
+    }
+    if platform == "tiktok":
+        prof = tiktok_profile(ch["handle"])
+        for k, v in prof.items():
+            if v is not None and (k != "name" or not meta.get("name") or meta["name"] == ch["handle"]):
+                meta[k] = v
+    return meta, vids
 
 
 def fetch_channel(ch, n, pool):
@@ -260,7 +303,12 @@ def build_stats(channels, settings=None, prev_stats=None, source="github", log=p
             old = prev.get(ch["id"])
             if old and old.get("videos"):
                 return ch["id"], {**old, "error": msg, "error_at": now}
-            return ch["id"], {"error": msg, "error_at": now, "fetched_at": None}
+            entry = {"error": msg, "error_at": now, "fetched_at": None}
+            if ch["platform"] == "tiktok":
+                prof = tiktok_profile(ch["handle"])
+                if prof:
+                    entry["channel"] = {"name": prof.get("name") or ch["handle"], "url": ch["url"], **prof}
+            return ch["id"], entry
 
     with ThreadPoolExecutor(max_workers=3) as outer:
         for cid, entry in outer.map(work, channels):
