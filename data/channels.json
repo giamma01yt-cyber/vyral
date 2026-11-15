@@ -1,1 +1,12 @@
-{"channels":[]}
+{
+  "channels": [
+    {
+      "id": "youtube:@bryzee6",
+      "platform": "youtube",
+      "handle": "@Bryzee6",
+      "url": "https://www.youtube.com/@Bryzee6",
+      "yt_tab": "both",
+      "added_at": 1794772637
+    }
+  ]
+}
