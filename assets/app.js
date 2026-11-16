@@ -1244,4 +1244,7 @@ function pcAutoRefresh() {
   updateSyncUI(); shellKey = ''; if ($('#view')) render();
 }
 window.addEventListener('pywebviewready', () => { if (S.channels) pcAutoRefresh(); });
+/* telefono: si usa come un'app (su iPhone niente zoom con due dita) */
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.documentElement.classList.add('standalone');
 boot();
