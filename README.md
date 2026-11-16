@@ -3,7 +3,6 @@
 <h1 align="center">Vyral</h1>
 <p align="center">Le statistiche dei tuoi ultimi video su <b>YouTube</b>, <b>TikTok</b>, <b>Twitch</b>, <b>Kick</b> e altri.<br>Stesso account su PC e telefono. Gratis, tutto su GitHub.</p>
 
-<p align="center"><img src="docs/home.png" width="860" alt="Home di Vyral"></p>
 
 ## Cosa fa
 
