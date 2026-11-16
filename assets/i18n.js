@@ -97,7 +97,7 @@ const EN = {
   'Annulla': 'Cancel', 'Conferma': 'Confirm', 'Rimuovere il canale?': 'Remove the channel?', 'Ripristinare il backup?': 'Restore the backup?', 'Ripristinare le impostazioni?': 'Reset the settings?',
   "Aspetto e opzioni torneranno come all'inizio.": 'Appearance and options will go back to the defaults.', 'Uscire?': 'Log out?', 'Torni alla schermata di accesso.': 'You go back to the sign-in screen.',
   'Il token verrà cancellato da questo dispositivo. I tuoi dati restano su GitHub.': 'The token will be removed from this device. Your data stays on GitHub.',
-  'Canale aggiunto': 'Channel added', 'Canale rimosso': 'Channel removed', 'Statistiche aggiornate': 'Stats updated', 'Backup ripristinato': 'Backup restored',
+  'Canale aggiunto': 'Channel added', 'Canale rimosso': 'Channel removed', 'Statistiche aggiornate': 'Stats updated', 'Sei offline: vedi gli ultimi dati salvati': "You're offline: showing the last saved data", 'Backup ripristinato': 'Backup restored',
   'Impostazioni ripristinate': 'Settings reset', 'YouTube Studio sbloccato': 'YouTube Studio unlocked', 'YouTube Studio bloccato': 'YouTube Studio locked',
   'Canale fissato in alto': 'Channel pinned to top', 'Canale tolto dai fissati': 'Channel unpinned',
   'Scrivi un link o il nome del canale.': 'Type a link or the channel name.', 'Usa il link del canale (youtube.com/@nome), non di un video.': 'Use the channel link (youtube.com/@name), not a video link.',

@@ -627,3 +627,11 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .btn:active, .ibtn:active { transform: scale(.94); }
   .hot:active, .vcard:active, .pcard:active, .ptile:active { transform: scale(.98); }
 }
+
+/* ---------------- APERTURA VELOCE ---------------- */
+.boot-splash .logo img { width: 100%; height: 100%; border-radius: inherit; display: block; }
+/* sottile barra in alto mentre arrivano i dati nuovi */
+body::after { content: ""; position: fixed; z-index: 60; left: 0; right: 0; top: env(safe-area-inset-top); height: 2px; pointer-events: none; opacity: 0; transition: opacity .4s;
+  background: linear-gradient(90deg, transparent, var(--a1), var(--a2), transparent); background-size: 50% 100%; background-repeat: no-repeat; }
+body.syncing::after { opacity: 1; animation: syncbar 1.1s linear infinite; }
+@keyframes syncbar { from { background-position: -50% 0; } to { background-position: 150% 0; } }

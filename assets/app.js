@@ -222,12 +222,12 @@ class GitHubBackend {
     throw new Error('Salvataggio non riuscito: riprova.');
   }
   async load() {
-    const [c, s, st] = await Promise.all([
+    const [c, s, st, studio] = await Promise.all([
       this.getJSON('data/channels.json', { channels: [] }),
       this.getJSON('data/settings.json', {}),
       this.getJSON('data/stats.json', { channels: {} }),
+      this.getJSON('data/studio.enc.json', null).catch(() => null),
     ]);
-    const studio = await this.getJSON('data/studio.enc.json', null).catch(() => null);
     return { channels: c.channels || [], settings: s, stats: st || { channels: {} }, studio };
   }
   async loadStats() { return this.getJSON('data/stats.json', { channels: {} }); }
@@ -598,6 +598,7 @@ function updateSyncUI() {
   const c = $('#syncCard'); if (c) c.innerHTML = syncText();
   const b = $('#refreshBtn');
   if (b) { b.disabled = S.busy; b.classList.toggle('spin', S.busy); b.querySelector('.lbl').textContent = S.busy ? 'Aggiorno…' : 'Aggiorna'; }
+  document.body.classList.toggle('syncing', !!S.syncing);
 }
 
 /* ============================================================
@@ -1126,7 +1127,7 @@ async function importBackup(e) {
 }
 async function logout() {
   if (!await confirmBox('Uscire?', S.backend.kind === 'demo' ? 'Torni alla schermata di accesso.' : 'Il token verrà cancellato da questo dispositivo. I tuoi dati restano su GitHub.', 'Esci')) return;
-  LS.del('auth'); LS.del('mode'); location.hash = ''; location.reload();
+  LS.del('auth'); LS.del('mode'); LS.del('cache'); location.hash = ''; location.reload();
 }
 
 /* click globali */
@@ -1209,28 +1210,86 @@ function renderLogin(err, prefill) {
 function loadingScreen() {
   $('#app').innerHTML = `<div class="login"><div style="text-align:center"><div class="lhero"><span class="orb"></span><span class="orb o2"></span><div class="logo">${LOGO_SVG(40)}</div></div><p class="mut">Carico i tuoi dati…</p></div></div>`;
 }
+/* ---------------- apertura veloce: ultimi dati salvati sul dispositivo ---------------- */
+const cacheKey = () => `${LS.get('mode')}:${S.auth?.owner || ''}/${S.auth?.repo || ''}`;
+function cacheSave(d) { if (S.backend?.kind !== 'demo') LS.set('cache', { key: cacheKey(), at: Date.now(), d }); }
+function cachePatch(patch) {
+  if (S.backend?.kind === 'demo') return;
+  const c = LS.get('cache'); if (!c || c.key !== cacheKey() || !c.d) return;
+  Object.assign(c.d, patch); c.at = Date.now(); LS.set('cache', c);
+}
+/* ogni salvataggio o aggiornamento tiene aggiornata anche la copia sul dispositivo */
+function wrapCache(b) {
+  const sc = b.saveChannels.bind(b), ss = b.saveSettings.bind(b), ls = b.loadStats.bind(b);
+  b.saveChannels = async list => { const r = await sc(list); cachePatch({ channels: list }); return r; };
+  b.saveSettings = async st => { const r = await ss(st); cachePatch({ settings: st }); return r; };
+  b.loadStats = async () => { const st = await ls(); if (st) cachePatch({ stats: st }); return st; };
+}
+async function applyData(d) {
+  S.channels = d.channels || []; S.settings = withDefaults(S.backend.kind === 'view' ? { ...d.settings, ...LS.get('viewSettings', {}) } : d.settings); S.stats = d.stats || { channels: {} };
+  if (!S.stats.channels) S.stats.channels = {};
+  await studioLoad(d.studio);
+  reEnrich(); applyLang(S.settings.lang); applySettings();
+}
+let lastSync = 0, started = false;
+function afterStart() {
+  if (started) return; started = true;
+  startAutoReload();
+  pcAutoRefresh();
+}
 async function boot() {
   const mode = LS.get('mode'), auth = LS.get('auth');
   if (mode === 'demo') S.backend = new DemoBackend();
   else if (mode === 'github' && auth) { S.auth = auth; S.backend = new GitHubBackend(auth); }
   else if (mode === 'view' && auth) { S.auth = auth; S.backend = new ViewBackend(auth); }
   else return renderLogin();
-  loadingScreen();
+  wrapCache(S.backend);
+  // 1) apro subito con gli ultimi dati salvati su questo dispositivo
+  const c = LS.get('cache');
+  let shown = false;
+  if (c && c.key === cacheKey() && c.d) {
+    try { await applyData(c.d); shellKey = ''; render(); shown = true; S.syncing = true; updateSyncUI(); afterStart(); }
+    catch { shown = false; }
+  }
+  if (!shown) loadingScreen();
+  // 2) intanto scarico i dati nuovi
   try {
     const d = await S.backend.load();
-    S.channels = d.channels; S.settings = withDefaults(S.backend.kind === 'view' ? { ...d.settings, ...LS.get('viewSettings', {}) } : d.settings); S.stats = d.stats || { channels: {} };
-    if (!S.stats.channels) S.stats.channels = {};
-    await studioLoad(d.studio);
-    reEnrich(); applyLang(S.settings.lang); applySettings();
-    shellKey = '';
-    render();
-    startAutoReload();
-    pcAutoRefresh();
+    const fresh = JSON.stringify(d);
+    const changed = !shown || fresh !== JSON.stringify(c.d);
+    cacheSave(d);
+    lastSync = Date.now(); S.syncing = false;
+    if (changed) {
+      await applyData(d);
+      if (!shown) { shellKey = ''; render(); }
+      else if (!document.activeElement?.matches?.('input,textarea,select')) { quietRender(); }
+    }
+    updateSyncUI();
+    afterStart();
   } catch (e) {
-    if (S.backend.kind !== 'demo') { LS.del('mode'); renderLogin(e.message === 'Failed to fetch' ? 'Connessione non riuscita.' : e.message); }
+    S.syncing = false;
+    const auth = /token|401|non trovato/i.test(e.message);
+    if (shown && !auth) { updateSyncUI(); toast('Sei offline: vedi gli ultimi dati salvati', true); return; }
+    if (S.backend.kind !== 'demo') { LS.del('mode'); LS.del('cache'); renderLogin(e.message === 'Failed to fetch' ? 'Connessione non riuscita.' : e.message); }
     else { LS.del('demo'); boot(); }
   }
 }
+/* aggiorna la pagina con i dati nuovi senza rifare le animazioni */
+function quietRender() {
+  const key = JSON.stringify([S.route, S.settings.platforms, S.channels.length, S.settings.name]);
+  if (key !== shellKey || S.route.name === 'settings') { shellKey = ''; render(); return; }
+  updateSyncUI(); rerenderView();
+}
+/* quando riapri l'app dal telefono (era in sottofondo) prendo le statistiche nuove */
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || !S.backend || S.backend.kind === 'demo' || S.busy || !started) return;
+  if (Date.now() - lastSync < 60000) return;
+  lastSync = Date.now();
+  try {
+    const st = await S.backend.loadStats();
+    if (st?.updated_at && st.updated_at !== S.stats.updated_at) { S.stats = st; reEnrich(); updateSyncUI(); if (S.route.name !== 'settings') rerenderView(); }
+  } catch { }
+});
 // pywebview inietta l'API dopo il caricamento
 /* programma per PC: aggiorna da solo all'avvio e ogni 30 minuti se i dati sono vecchi */
 let pcTimer = null;
@@ -1247,4 +1306,6 @@ window.addEventListener('pywebviewready', () => { if (S.channels) pcAutoRefresh(
 /* telefono: si usa come un'app (su iPhone niente zoom con due dita) */
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.documentElement.classList.add('standalone');
+/* copia dell'app sul telefono: si apre subito anche con internet lento */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || LS.get('swtest'))) navigator.serviceWorker.register('sw.js').catch(() => { });
 boot();
